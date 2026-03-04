@@ -31,7 +31,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7770012237580876980}
-  m_RootOrder: 2
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
@@ -108,7 +107,6 @@ RectTransform:
   m_Children:
   - {fileID: 7770012236025713466}
   m_Father: {fileID: 7770012236363566176}
-  m_RootOrder: 4
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 1, y: 0.5}
   m_AnchorMax: {x: 1, y: 0.5}
@@ -184,7 +182,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7770012237580876980}
-  m_RootOrder: 5
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
@@ -260,7 +257,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7770012237580876980}
-  m_RootOrder: 6
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
@@ -338,7 +334,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7770012237006823436}
-  m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
@@ -563,6 +558,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -592,6 +588,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     startSize:
@@ -913,6 +910,7 @@ ParticleSystem:
         m_PostInfinity: 2
         m_RotationOrder: 4
     randomizeRotationDirection: 0
+    gravitySource: 0
     maxNumParticles: 1000
     customEmitterVelocity: {x: 0, y: 0, z: 0}
     size3D: 0
@@ -1651,6 +1649,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -1680,6 +1679,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
   UVModule:
@@ -3900,6 +3900,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -3929,6 +3930,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     range: {x: 0, y: 1}
@@ -4318,6 +4320,7 @@ ParticleSystem:
         m_RotationOrder: 4
     minVertexDistance: 0.2
     textureMode: 0
+    textureScale: {x: 1, y: 1}
     ribbonCount: 1
     shadowBias: 0.5
     worldSpace: 0
@@ -4360,6 +4363,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -4389,6 +4393,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     widthOverTrail:
@@ -4476,6 +4481,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -4505,6 +4511,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
   CustomDataModule:
@@ -4543,6 +4550,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -4572,6 +4580,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     colorLabel0: Color
@@ -4825,6 +4834,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -4854,6 +4864,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     colorLabel1: Color
@@ -5094,7 +5105,7 @@ ParticleSystemRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10308, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: e823cd5b5d27c0f4b8256e7c12ee3e6d, type: 2}
   - {fileID: 0}
   m_StaticBatchInfo:
     firstSubMesh: 0
@@ -5130,13 +5141,15 @@ ParticleSystemRenderer:
   m_RenderAlignment: 0
   m_Pivot: {x: 0, y: 0, z: 0}
   m_Flip: {x: 0, y: 0, z: 0}
-  m_UseCustomVertexStreams: 0
   m_EnableGPUInstancing: 1
   m_ApplyActiveColorSpace: 1
   m_AllowRoll: 1
   m_FreeformStretching: 0
   m_RotateWithStretchDirection: 1
+  m_UseCustomVertexStreams: 0
   m_VertexStreams: 00010304
+  m_UseCustomTrailVertexStreams: 0
+  m_TrailVertexStreams: 00010304
   m_Mesh: {fileID: 0}
   m_Mesh1: {fileID: 0}
   m_Mesh2: {fileID: 0}
@@ -5207,7 +5220,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7770012235805358269}
-  m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
@@ -5245,7 +5257,8 @@ MonoBehaviour:
   m_text: 3
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 605433b68313d491a8ab88bc03a41651, type: 2}
-  m_sharedMaterial: {fileID: 2830636965969884548, guid: 605433b68313d491a8ab88bc03a41651, type: 2}
+  m_sharedMaterial: {fileID: 2830636965969884548, guid: 605433b68313d491a8ab88bc03a41651,
+    type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -5342,7 +5355,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7770012237121692394}
-  m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
@@ -5418,7 +5430,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7770012237580876980}
-  m_RootOrder: 7
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
@@ -5498,7 +5509,6 @@ RectTransform:
   - {fileID: 7770012237006823436}
   - {fileID: 7770012235805358269}
   m_Father: {fileID: 0}
-  m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
@@ -5587,7 +5597,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7770012237580876980}
-  m_RootOrder: 3
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
@@ -5663,7 +5672,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7770012237580876980}
-  m_RootOrder: 8
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
@@ -5739,7 +5747,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7770012237580876980}
-  m_RootOrder: 4
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
@@ -5815,7 +5822,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7770012237580876980}
-  m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
@@ -5892,7 +5898,6 @@ RectTransform:
   m_Children:
   - {fileID: 7770012235949418374}
   m_Father: {fileID: 7770012236363566176}
-  m_RootOrder: 3
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0.5}
   m_AnchorMax: {x: 0, y: 0.5}
@@ -5969,7 +5974,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7770012236363566176}
-  m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
@@ -6098,7 +6102,6 @@ RectTransform:
   m_Children:
   - {fileID: 7770012236137476293}
   m_Father: {fileID: 7770012236363566176}
-  m_RootOrder: 1
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
@@ -6187,7 +6190,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7770012237580876980}
-  m_RootOrder: 1
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
@@ -6272,7 +6274,6 @@ RectTransform:
   - {fileID: 7770012236235751773}
   - {fileID: 7770012236828039377}
   m_Father: {fileID: 7770012236363566176}
-  m_RootOrder: 2
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0.5}
   m_AnchorMax: {x: 0, y: 0.5}

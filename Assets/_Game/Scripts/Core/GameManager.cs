@@ -17,7 +17,7 @@ public class GameManager : MonoBehaviour
         Instance = this;
         DontDestroyOnLoad(gameObject);
 
-        // Khởi tạo DOTween (Cách của Huy rất tốt)
+        // Khởi tạo DOTween
         DOTween.Init(true, true, LogBehaviour.Verbose).SetCapacity(200, 10);
     }
 

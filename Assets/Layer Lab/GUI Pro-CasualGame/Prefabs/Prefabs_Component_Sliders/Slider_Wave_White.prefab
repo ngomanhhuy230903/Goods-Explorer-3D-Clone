@@ -30,7 +30,6 @@ RectTransform:
   m_Children:
   - {fileID: 3564920753337366800}
   m_Father: {fileID: 3564920753258649047}
-  m_RootOrder: 1
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
@@ -72,7 +71,6 @@ RectTransform:
   - {fileID: 3564920753351932544}
   - {fileID: 3564920754018064575}
   m_Father: {fileID: 0}
-  m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
@@ -162,7 +160,6 @@ RectTransform:
   m_Children:
   - {fileID: 3564920753395770861}
   m_Father: {fileID: 3564920753141385383}
-  m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
@@ -239,7 +236,6 @@ RectTransform:
   m_Children:
   - {fileID: 3564920753401535377}
   m_Father: {fileID: 3564920753258649047}
-  m_RootOrder: 3
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
@@ -315,7 +311,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 3564920753337366800}
-  m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 1, y: 0.5}
   m_AnchorMax: {x: 1, y: 0.5}
@@ -391,7 +386,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 3564920753351932544}
-  m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
@@ -429,7 +423,8 @@ MonoBehaviour:
   m_text: 1
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 9a2157e1f9c4c4d38841fbb92558f587, type: 2}
-  m_sharedMaterial: {fileID: -6360588970910393389, guid: 9a2157e1f9c4c4d38841fbb92558f587, type: 2}
+  m_sharedMaterial: {fileID: -6360588970910393389, guid: 9a2157e1f9c4c4d38841fbb92558f587,
+    type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -526,7 +521,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 3564920753258649047}
-  m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
@@ -603,7 +597,6 @@ RectTransform:
   m_Children:
   - {fileID: 3564920754871935654}
   m_Father: {fileID: 3564920753258649047}
-  m_RootOrder: 4
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 1, y: 0.5}
   m_AnchorMax: {x: 1, y: 0.5}
@@ -679,7 +672,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 3564920754887506149}
-  m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
@@ -717,7 +709,8 @@ MonoBehaviour:
   m_text: 1
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 9a2157e1f9c4c4d38841fbb92558f587, type: 2}
-  m_sharedMaterial: {fileID: -6360588970910393389, guid: 9a2157e1f9c4c4d38841fbb92558f587, type: 2}
+  m_sharedMaterial: {fileID: -6360588970910393389, guid: 9a2157e1f9c4c4d38841fbb92558f587,
+    type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -814,7 +807,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 3564920754018064575}
-  m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
@@ -852,7 +844,8 @@ MonoBehaviour:
   m_text: 1
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 9a2157e1f9c4c4d38841fbb92558f587, type: 2}
-  m_sharedMaterial: {fileID: -6360588970910393389, guid: 9a2157e1f9c4c4d38841fbb92558f587, type: 2}
+  m_sharedMaterial: {fileID: -6360588970910393389, guid: 9a2157e1f9c4c4d38841fbb92558f587,
+    type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -950,7 +943,6 @@ RectTransform:
   m_Children:
   - {fileID: 3564920754080453939}
   m_Father: {fileID: 3564920753258649047}
-  m_RootOrder: 2
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0.5}
   m_AnchorMax: {x: 0, y: 0.5}
