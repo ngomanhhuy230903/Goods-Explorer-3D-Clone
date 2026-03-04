@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 392c52f4e3e2d9d459126301290d47c5, type: 3}
   m_Name: FoodItem_Cheese
   m_EditorClassIdentifier: 
-  foodID: 6
+  foodID: 7
   foodName: Cheese
   prefab: {fileID: 1485319667670839895, guid: faddb7582ea378c44a767cc63fe84c89, type: 3}
   iconSprite: {fileID: 0}

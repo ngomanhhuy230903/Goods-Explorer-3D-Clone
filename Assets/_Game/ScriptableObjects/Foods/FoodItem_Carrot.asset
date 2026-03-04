@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 392c52f4e3e2d9d459126301290d47c5, type: 3}
   m_Name: FoodItem_Carrot
   m_EditorClassIdentifier: 
-  foodID: 4
+  foodID: 5
   foodName: Carrot
   prefab: {fileID: 4797751799249303859, guid: 1473e8761428dcd44a8962866ef4fc6a, type: 3}
   iconSprite: {fileID: 0}

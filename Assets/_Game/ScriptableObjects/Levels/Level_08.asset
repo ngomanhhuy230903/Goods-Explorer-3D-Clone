@@ -26,4 +26,3 @@ MonoBehaviour:
   maxActiveCustomers: 2
   backupTrayCapacity: 5
   timeLimitSeconds: 0
-  coinReward: 10

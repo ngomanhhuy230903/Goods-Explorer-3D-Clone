@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 392c52f4e3e2d9d459126301290d47c5, type: 3}
   m_Name: FoodItem_Broccoli
   m_EditorClassIdentifier: 
-  foodID: 2
+  foodID: 3
   foodName: Broccoli
   prefab: {fileID: 2738341772031687196, guid: 23244ec81d1b60d4eb89d43c5a1606eb, type: 3}
   iconSprite: {fileID: 0}

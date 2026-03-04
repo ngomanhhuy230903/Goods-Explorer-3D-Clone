@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 392c52f4e3e2d9d459126301290d47c5, type: 3}
   m_Name: FoodItem_Apple
   m_EditorClassIdentifier: 
-  foodID: 0
+  foodID: 1
   foodName: Apple
   prefab: {fileID: 8890508618791391049, guid: ca29c74284c40524f8edb533636550f9, type: 3}
   iconSprite: {fileID: 0}
