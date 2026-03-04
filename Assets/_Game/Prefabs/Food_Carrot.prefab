@@ -12,6 +12,8 @@ GameObject:
   - component: {fileID: 9111066743949863980}
   - component: {fileID: 6455335741534853350}
   - component: {fileID: 4857098505297871242}
+  - component: {fileID: 2665505416776165083}
+  - component: {fileID: -716183569071760054}
   m_Layer: 0
   m_Name: Food_Carrot
   m_TagString: Untagged
@@ -105,3 +107,28 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.30915725, y: 0.08021461, z: 0.07740368}
   m_Center: {x: -0.02274094, y: 0.04085688, z: 0.0017443179}
+--- !u!114 &2665505416776165083
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4797751799249303859}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ee81736b137618c41928632a7c98d979, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  meshRenderer: {fileID: 6455335741534853350}
+--- !u!114 &-716183569071760054
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4797751799249303859}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3bd715b0a7bccce43ada2c6096594f03, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 

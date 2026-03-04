@@ -69,20 +69,14 @@ namespace FoodMatch.Data
             }
 
             // Đảm bảo khay có đủ ô cho tất cả món
-            int trayCapacity = trayColumns * trayRows;
-            if (totalFoodCount > trayCapacity * layerCount)
-            {
-                Debug.LogWarning($"[LevelConfig] Level {levelIndex}: " +
-                                 $"Tổng món ({totalFoodCount}) > sức chứa tray " +
-                                 $"({trayColumns}x{trayRows}x{layerCount} = {trayCapacity * layerCount}). " +
-                                 $"Hãy tăng kích thước tray hoặc giảm số món.");
-            }
-
-            // Tự đặt tên file
-            if (!string.IsNullOrEmpty(levelDisplayName))
-                name = $"Level_{levelIndex:D2}_{levelDisplayName}";
-            else
-                name = $"Level_{levelIndex:D2}";
+            //int trayCapacity = trayColumns * trayRows;  
+            //if (totalFoodCount > (trayCapacity * layerCount * 3))
+            //{
+            //    Debug.LogWarning($"[LevelConfig] Level {levelIndex}: " +
+            //                     $"Tổng món ({totalFoodCount}) > sức chứa tray " +
+            //                     $"({trayColumns}x{trayRows}x{layerCount} = {trayCapacity * layerCount}). " +
+            //                     $"Hãy tăng kích thước tray hoặc giảm số món.");
+            //}
         }
 #endif
 

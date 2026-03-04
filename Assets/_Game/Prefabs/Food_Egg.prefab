@@ -12,6 +12,9 @@ GameObject:
   - component: {fileID: 320003674232488524}
   - component: {fileID: 2563699293355669126}
   - component: {fileID: 7172208797376987100}
+  - component: {fileID: -6902808142992117683}
+  - component: {fileID: 6464324307795760215}
+  - component: {fileID: -3110066002794223994}
   m_Layer: 0
   m_Name: Food_Egg
   m_TagString: Untagged
@@ -107,3 +110,49 @@ CapsuleCollider:
   m_Height: 0.13170533
   m_Direction: 1
   m_Center: {x: -0.000000009313226, y: 0.066303246, z: 0.0000000055879354}
+--- !u!114 &-6902808142992117683
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4077141521328887635}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ee81736b137618c41928632a7c98d979, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  meshRenderer: {fileID: 2563699293355669126}
+--- !u!65 &6464324307795760215
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4077141521328887635}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.098105095, y: 0.13170531, z: 0.09810511}
+  m_Center: {x: -0.000000009313225, y: 0.06630324, z: 0.000000005587935}
+--- !u!114 &-3110066002794223994
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4077141521328887635}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3bd715b0a7bccce43ada2c6096594f03, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 

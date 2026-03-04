@@ -12,6 +12,8 @@ GameObject:
   - component: {fileID: 1937814943423311619}
   - component: {fileID: 4395644238807718857}
   - component: {fileID: -2556553843668673781}
+  - component: {fileID: -4202903025219255258}
+  - component: {fileID: -3487637168496946462}
   m_Layer: 0
   m_Name: Food_Broccoli
   m_TagString: Untagged
@@ -105,3 +107,28 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.15659866, y: 0.25635576, z: 0.17071845}
   m_Center: {x: -0.0023231506, y: 0.10901162, z: 0.0012335554}
+--- !u!114 &-4202903025219255258
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2738341772031687196}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ee81736b137618c41928632a7c98d979, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  meshRenderer: {fileID: 4395644238807718857}
+--- !u!114 &-3487637168496946462
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2738341772031687196}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3bd715b0a7bccce43ada2c6096594f03, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 

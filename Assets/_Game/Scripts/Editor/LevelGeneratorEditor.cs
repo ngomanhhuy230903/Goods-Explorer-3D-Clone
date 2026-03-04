@@ -7,10 +7,6 @@ using FoodMatch.Data;
 
 namespace FoodMatch.Editor
 {
-    /// <summary>
-    /// Custom Editor Window để tự động tạo 20 LevelConfig SO.
-    /// Mở qua menu: FoodMatch > Level Generator
-    /// </summary>
     public class LevelGeneratorEditor : EditorWindow
     {
         // ─── Config ───────────────────────────────────────────────────────────
@@ -20,24 +16,20 @@ namespace FoodMatch.Editor
         private int _levelCount = 20;
         private bool _clearExisting = false;
 
-        // Scroll position cho cửa sổ
         private Vector2 _scroll;
 
-        // ─── Menu Item ────────────────────────────────────────────────────────
         [MenuItem("FoodMatch/Level Generator")]
         public static void OpenWindow()
         {
             var window = GetWindow<LevelGeneratorEditor>("Level Generator");
-            window.minSize = new Vector2(420, 500);
+            window.minSize = new Vector2(480, 520);
             window.Show();
         }
 
-        // ─── GUI ──────────────────────────────────────────────────────────────
         private void OnGUI()
         {
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
 
-            // ── Header ──
             EditorGUILayout.Space(10);
             GUIStyle headerStyle = new GUIStyle(EditorStyles.boldLabel)
             {
@@ -49,39 +41,27 @@ namespace FoodMatch.Editor
             DrawHorizontalLine();
             EditorGUILayout.Space(10);
 
-            // ── References ──
             EditorGUILayout.LabelField("References", EditorStyles.boldLabel);
-            _database = (LevelDatabase)EditorGUILayout.ObjectField(
-                "Level Database", _database, typeof(LevelDatabase), false);
-            _foodDb = (FoodDatabase)EditorGUILayout.ObjectField(
-                "Food Database", _foodDb, typeof(FoodDatabase), false);
+            _database = (LevelDatabase)EditorGUILayout.ObjectField("Level Database", _database, typeof(LevelDatabase), false);
+            _foodDb = (FoodDatabase)EditorGUILayout.ObjectField("Food Database", _foodDb, typeof(FoodDatabase), false);
             EditorGUILayout.Space(5);
 
-            // ── Settings ──
             EditorGUILayout.LabelField("Settings", EditorStyles.boldLabel);
             _savePath = EditorGUILayout.TextField("Save Path", _savePath);
-            _levelCount = EditorGUILayout.IntSlider("Số levels cần tạo", _levelCount, 1, 30);
-            _clearExisting = EditorGUILayout.Toggle(
-                new GUIContent("Xóa levels cũ trước",
-                    "Nếu tick: xóa toàn bộ file Level_XX cũ trước khi tạo mới"),
-                _clearExisting);
+            _levelCount = EditorGUILayout.IntSlider("Số levels cần tạo", _levelCount, 1, 50);
+            _clearExisting = EditorGUILayout.Toggle(new GUIContent("Xóa levels cũ trước", "Xóa file cũ trước khi tạo mới"), _clearExisting);
 
             EditorGUILayout.Space(10);
             DrawHorizontalLine();
 
-            // ── Preview ──
             EditorGUILayout.Space(5);
-            EditorGUILayout.LabelField("Preview cấu hình sẽ được tạo:", EditorStyles.boldLabel);
-
-            ShowLevelPreview(1, 5, "🟢 Dễ (Tutorial)", 2, 9, 1, 5);
-            ShowLevelPreview(6, 12, "🟡 Trung bình", 3, 12, 2, 5);
-            ShowLevelPreview(13, 20, "🔴 Khó", 4, 15, 2, 5);
+            EditorGUILayout.LabelField("Preview thông số cân bằng (Auto-Calc):", EditorStyles.boldLabel);
+            DrawDynamicPreviews();
 
             EditorGUILayout.Space(10);
             DrawHorizontalLine();
             EditorGUILayout.Space(10);
 
-            // ── Buttons ──
             GUI.backgroundColor = new Color(0.4f, 0.8f, 0.4f);
             if (GUILayout.Button("✅  TẠO " + _levelCount + " LEVELS", GUILayout.Height(40)))
             {
@@ -102,16 +82,36 @@ namespace FoodMatch.Editor
             EditorGUILayout.EndScrollView();
         }
 
-        // ─── Helpers GUI ──────────────────────────────────────────────────────
-
-        private void ShowLevelPreview(int from, int to, string label,
-            int layers, int foods, int customers, int backup)
+        private void DrawDynamicPreviews()
         {
-            EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
-            EditorGUILayout.LabelField($"{label}  (Level {from}-{to})", GUILayout.Width(220));
-            EditorGUILayout.LabelField($"Layers:{layers}  Foods:{foods}  Cust:{customers}",
-                EditorStyles.miniLabel);
-            EditorGUILayout.EndHorizontal();
+            int maxFoods = _foodDb != null ? _foodDb.allFoods.Count : 20;
+
+            GetLevelStats(1, maxFoods, out int f1, out int l1, out int c1, out int r1, out int cu1, out int t1);
+            GetLevelStats(5, maxFoods, out int f5, out int l5, out int c5, out int r5, out int cu5, out int t5);
+            ShowTierPreview("🟢 Dễ (Lv 1-5)", l1, l5, f1, f5, c1, r1, c5, r5, cu1, cu5, t1, t5);
+
+            GetLevelStats(6, maxFoods, out int f6, out int l6, out int c6, out int r6, out int cu6, out int t6);
+            GetLevelStats(12, maxFoods, out int f12, out int l12, out int c12, out int r12, out int cu12, out int t12);
+            ShowTierPreview("🟡 T.Bình (Lv 6-12)", l6, l12, f6, f12, c6, r6, c12, r12, cu6, cu12, t6, t12);
+
+            GetLevelStats(13, maxFoods, out int f13, out int l13, out int c13, out int r13, out int cu13, out int t13);
+            GetLevelStats(20, maxFoods, out int f20, out int l20, out int c20, out int r20, out int cu20, out int t20);
+            ShowTierPreview("🔴 Khó (Lv 13-20)", l13, l20, f13, f20, c13, r13, c20, r20, cu13, cu20, t13, t20);
+        }
+
+        private void ShowTierPreview(string label, int lMin, int lMax, int fMin, int fMax, int cMin, int rMin, int cMax, int rMax, int cuMin, int cuMax, int tMin, int tMax)
+        {
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField(label, EditorStyles.boldLabel);
+            EditorGUILayout.LabelField($"• Layers: {lMin}{(lMin == lMax ? "" : $"-{lMax}")} | Khách: {cuMin}{(cuMin == cuMax ? "" : $"-{cuMax}")}");
+            EditorGUILayout.LabelField($"• Tổng đồ ăn: {fMin} -> {fMax} (Chia hết cho 3)");
+
+            string gridMinStr = $"{cMin}x{rMin}";
+            string gridMaxStr = $"{cMax}x{rMax}";
+            EditorGUILayout.LabelField($"• Kích thước khay (Cột x Hàng): {gridMinStr} -> {gridMaxStr}");
+
+            EditorGUILayout.LabelField($"• Số loại đồ ăn: {tMin} -> {tMax} loại");
+            EditorGUILayout.EndVertical();
         }
 
         private void DrawHorizontalLine()
@@ -120,65 +120,39 @@ namespace FoodMatch.Editor
             EditorGUI.DrawRect(rect, new Color(0.5f, 0.5f, 0.5f, 0.5f));
         }
 
-        // ─── Auto Find ────────────────────────────────────────────────────────
-
         private void AutoFindDatabases()
         {
-            // Tìm LevelDatabase
             string[] lvlGuids = AssetDatabase.FindAssets("t:LevelDatabase");
             if (lvlGuids.Length > 0)
             {
                 string path = AssetDatabase.GUIDToAssetPath(lvlGuids[0]);
                 _database = AssetDatabase.LoadAssetAtPath<LevelDatabase>(path);
-                Debug.Log($"[LevelGenerator] Tìm thấy LevelDatabase: {path}");
             }
-            else
-                Debug.LogWarning("[LevelGenerator] Không tìm thấy LevelDatabase asset.");
 
-            // Tìm FoodDatabase
             string[] foodGuids = AssetDatabase.FindAssets("t:FoodDatabase");
             if (foodGuids.Length > 0)
             {
                 string path = AssetDatabase.GUIDToAssetPath(foodGuids[0]);
                 _foodDb = AssetDatabase.LoadAssetAtPath<FoodDatabase>(path);
-                Debug.Log($"[LevelGenerator] Tìm thấy FoodDatabase: {path}");
             }
-            else
-                Debug.LogWarning("[LevelGenerator] Không tìm thấy FoodDatabase asset.");
         }
-
-        // ─── Main Generator ───────────────────────────────────────────────────
 
         private void GenerateLevels()
         {
-            // Validation
-            if (_database == null)
+            if (_database == null || _foodDb == null || _foodDb.allFoods.Count == 0)
             {
-                EditorUtility.DisplayDialog("Lỗi",
-                    "Chưa gán LevelDatabase! Hãy kéo thả vào hoặc dùng nút Auto Find.", "OK");
-                return;
-            }
-            if (_foodDb == null || _foodDb.allFoods.Count == 0)
-            {
-                EditorUtility.DisplayDialog("Lỗi",
-                    "FoodDatabase trống hoặc chưa gán! Cần ít nhất 1 FoodItemData.", "OK");
+                EditorUtility.DisplayDialog("Lỗi", "Kiểm tra lại Database của bạn!", "OK");
                 return;
             }
 
-            // Tạo thư mục nếu chưa có
             if (!Directory.Exists(_savePath))
             {
                 Directory.CreateDirectory(_savePath);
                 AssetDatabase.Refresh();
             }
 
-            // Xóa levels cũ nếu được yêu cầu
-            if (_clearExisting)
-            {
-                ClearOldLevels();
-            }
+            if (_clearExisting) ClearOldLevels();
 
-            // Bắt đầu tạo
             int created = 0;
             var newLevels = new List<LevelConfig>();
 
@@ -188,116 +162,114 @@ namespace FoodMatch.Editor
                 if (config == null) continue;
 
                 string filePath = $"{_savePath}/Level_{i:D2}.asset";
-
-                // Nếu file đã tồn tại thì update, không tạo mới
-                LevelConfig existing =
-                    AssetDatabase.LoadAssetAtPath<LevelConfig>(filePath);
+                LevelConfig existing = AssetDatabase.LoadAssetAtPath<LevelConfig>(filePath);
 
                 if (existing != null && !_clearExisting)
                 {
-                    // Cập nhật existing asset
                     EditorUtility.CopySerialized(config, existing);
                     EditorUtility.SetDirty(existing);
                     newLevels.Add(existing);
-                    DestroyImmediate(config); // Hủy config tạm
+                    DestroyImmediate(config);
                 }
                 else
                 {
-                    // Tạo asset mới
                     AssetDatabase.CreateAsset(config, filePath);
                     newLevels.Add(config);
                 }
 
                 created++;
-                EditorUtility.DisplayProgressBar(
-                    "Đang tạo levels...",
-                    $"Level {i}/{_levelCount}",
-                    (float)i / _levelCount);
+                EditorUtility.DisplayProgressBar("Đang tạo levels...", $"Level {i}/{_levelCount}", (float)i / _levelCount);
             }
 
             EditorUtility.ClearProgressBar();
-
-            // Cập nhật LevelDatabase
             _database.levels = newLevels;
             EditorUtility.SetDirty(_database);
-
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            EditorUtility.DisplayDialog("Hoàn thành!",
-                $"Đã tạo thành công {created} levels!\n" +
-                $"Đã cập nhật LevelDatabase.", "OK");
-
-            Debug.Log($"[LevelGenerator] ✅ Tạo xong {created} levels tại: {_savePath}");
+            EditorUtility.DisplayDialog("Hoàn thành!", $"Đã cân bằng và tạo {created} levels!", "OK");
         }
 
-        // ─── Level Config Builder ─────────────────────────────────────────────
+        // ─── THUẬT TOÁN CÂN BẰNG GRID ĐÃ SỬA LẠI (TĂNG ĐỀU) ───────────────────
+        private void GetLevelStats(int levelIndex, int maxDbFoods, out int totalFood, out int layers, out int cols, out int rows, out int customers, out int foodTypes)
+        {
+            // 1. Số đồ ăn
+            float rawFoodCount = 30f * Mathf.Pow(1.15f, levelIndex - 1);
+            totalFood = Mathf.RoundToInt(rawFoodCount);
+            int remainder = totalFood % 3;
+            if (remainder == 1) totalFood -= 1;
+            else if (remainder == 2) totalFood += 1;
+
+            // 2. Phân loại theo Level
+            if (levelIndex <= 5) { layers = 2; customers = 1; }
+            else if (levelIndex <= 12) { layers = 3; customers = 2; }
+            else { layers = 4; customers = 2; }
+
+            // 3. Setup Kích thước Grid siêu nén (Bắt đầu từ 4x2)
+            cols = 4;
+            rows = 2;
+
+            // Giả định 1 layer trong 1 box có thể nhồi được tối đa ~4 món ăn.
+            // Sức chứa của 1 box = số layer * 4.
+            int maxItemsPerBox = layers * 4;
+
+            // Cờ để luân phiên tăng: true = tăng cột, false = tăng hàng
+            bool expandColNext = true;
+
+            // Vòng lặp: Luân phiên nới rộng cột và hàng khi tổng đồ ăn vượt quá sức chứa
+            while (true)
+            {
+                int currentCapacity = cols * rows * maxItemsPerBox;
+
+                if (totalFood <= currentCapacity) break; // Đã đủ sức chứa
+                if (cols >= 6 && rows >= 4) break;       // Chạm trần kích thước khay 6x4
+
+                if (expandColNext)
+                {
+                    if (cols < 6) cols++;
+                    else if (rows < 4) rows++; // Chữa cháy nếu cột đã max mà hàng vẫn còn tăng được
+                }
+                else
+                {
+                    if (rows < 4) rows++;
+                    else if (cols < 6) cols++; // Chữa cháy nếu hàng đã max mà cột vẫn còn tăng được
+                }
+
+                expandColNext = !expandColNext; // Đảo lượt
+            }
+
+            // 4. Số loại đồ ăn
+            int idealTypes = Mathf.Max(3, totalFood / 9);
+            foodTypes = Mathf.Min(idealTypes, maxDbFoods);
+        }
 
         private LevelConfig CreateLevelConfig(int index)
         {
             var config = CreateInstance<LevelConfig>();
             config.levelIndex = index;
+            int maxFoodTypes = _foodDb != null ? _foodDb.allFoods.Count : 10;
 
-            // Lấy danh sách foods từ FoodDatabase
-            var allFoods = _foodDb.allFoods;
-            int maxFoodTypes = allFoods.Count;
+            GetLevelStats(index, maxFoodTypes, out int totalFood, out int layers, out int cols, out int rows, out int customers, out int types);
 
-            // ── Level 1-5: Dễ (Tutorial) ──────────────────────────────────
-            if (index <= 5)
+            config.totalFoodCount = totalFood;
+            config.layerCount = layers;
+            config.trayColumns = cols;
+            config.trayRows = rows;
+            config.maxActiveCustomers = customers;
+            config.backupTrayCapacity = 5;
+            config.timeLimitSeconds = 0f;
+
+            if (index <= 5) config.levelDisplayName = GetEasyLevelName(index);
+            else if (index <= 12) config.levelDisplayName = GetMediumLevelName(index);
+            else config.levelDisplayName = GetHardLevelName(index);
+
+            if (_foodDb != null && _foodDb.allFoods.Count > 0)
             {
-                config.levelDisplayName = GetEasyLevelName(index);
-                config.layerCount = 2;
-                config.trayColumns = 3;
-                config.trayRows = 3;
-                config.totalFoodCount = 9;
-                config.maxActiveCustomers = 1;
-                config.backupTrayCapacity = 5;
-                config.timeLimitSeconds = 0f;
-
-                // Dùng 3 loại food đầu tiên
-                int foodTypeCount = Mathf.Min(3, maxFoodTypes);
-                config.availableFoods = allFoods.GetRange(0, foodTypeCount);
-            }
-            // ── Level 6-12: Trung bình ────────────────────────────────────
-            else if (index <= 12)
-            {
-                config.levelDisplayName = GetMediumLevelName(index);
-                config.layerCount = 3;
-                config.trayColumns = 4;
-                config.trayRows = 3;
-                config.totalFoodCount = 12;
-                config.maxActiveCustomers = 2;
-                config.backupTrayCapacity = 5;
-                config.timeLimitSeconds = 0f;
-
-                // Dùng 4-5 loại food
-                int foodTypeCount = Mathf.Min(4 + (index - 6) / 3, maxFoodTypes);
-                foodTypeCount = Mathf.Max(foodTypeCount, 1);
-                config.availableFoods = allFoods.GetRange(0, foodTypeCount);
-            }
-            // ── Level 13-20: Khó ──────────────────────────────────────────
-            else
-            {
-                config.levelDisplayName = GetHardLevelName(index);
-                config.layerCount = 4;
-                config.trayColumns = 4;
-                config.trayRows = 4;
-                config.totalFoodCount = 15 + ((index - 13) / 2) * 3; // 15,15,18,18,21...
-                config.totalFoodCount = (config.totalFoodCount / 3) * 3; // đảm bảo chia hết 3
-                config.maxActiveCustomers = 2;
-                config.backupTrayCapacity = 5;
-                config.timeLimitSeconds = 0f;
-
-                // Dùng tất cả food types có sẵn
-                int foodTypeCount = Mathf.Min(5 + (index - 13) / 2, maxFoodTypes);
-                foodTypeCount = Mathf.Max(foodTypeCount, 1);
-                config.availableFoods = allFoods.GetRange(0, foodTypeCount);
+                config.availableFoods = _foodDb.allFoods.GetRange(0, types);
             }
 
             return config;
         }
-
-        // ─── Level Names ──────────────────────────────────────────────────────
 
         private string GetEasyLevelName(int i)
         {
@@ -307,42 +279,24 @@ namespace FoodMatch.Editor
 
         private string GetMediumLevelName(int i)
         {
-            string[] names = {
-                "Afternoon Rush", "Teatime", "Happy Hour",
-                "Dinner Prep", "Street Food", "Night Market", "Weekend Special"
-            };
+            string[] names = { "Afternoon Rush", "Teatime", "Happy Hour", "Dinner Prep", "Street Food", "Night Market", "Weekend Special" };
             return names[Mathf.Clamp(i - 6, 0, names.Length - 1)];
         }
 
         private string GetHardLevelName(int i)
         {
-            string[] names = {
-                "Chef's Challenge", "Grand Buffet", "VIP Banquet",
-                "Food Festival", "Michelin Star", "Iron Chef",
-                "Ultimate Feast", "Legend Mode"
-            };
+            string[] names = { "Chef's Challenge", "Grand Buffet", "VIP Banquet", "Food Festival", "Michelin Star", "Iron Chef", "Ultimate Feast", "Legend Mode" };
             return names[Mathf.Clamp(i - 13, 0, names.Length - 1)];
         }
-
-        // ─── Clear Old Levels ─────────────────────────────────────────────────
 
         private void ClearOldLevels()
         {
             string[] guids = AssetDatabase.FindAssets("t:LevelConfig", new[] { _savePath });
-            int count = 0;
-
             foreach (string guid in guids)
             {
-                string path = AssetDatabase.GUIDToAssetPath(guid);
-                AssetDatabase.DeleteAsset(path);
-                count++;
+                AssetDatabase.DeleteAsset(AssetDatabase.GUIDToAssetPath(guid));
             }
-
-            if (count > 0)
-            {
-                AssetDatabase.Refresh();
-                Debug.Log($"[LevelGenerator] Đã xóa {count} level cũ.");
-            }
+            AssetDatabase.Refresh();
         }
     }
 }

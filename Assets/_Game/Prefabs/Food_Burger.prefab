@@ -12,6 +12,8 @@ GameObject:
   - component: {fileID: 7870160636704910788}
   - component: {fileID: 5394355981916182798}
   - component: {fileID: 3921520719075274391}
+  - component: {fileID: 6338434988137100474}
+  - component: {fileID: 2207068743214676607}
   m_Layer: 0
   m_Name: Food_Burger
   m_TagString: Untagged
@@ -105,3 +107,28 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.16801056, y: 0.13290386, z: 0.16842225}
   m_Center: {x: 0.00077810884, y: 0.06474284, z: -0.003043875}
+--- !u!114 &6338434988137100474
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5898702171912911067}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ee81736b137618c41928632a7c98d979, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  meshRenderer: {fileID: 5394355981916182798}
+--- !u!114 &2207068743214676607
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5898702171912911067}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3bd715b0a7bccce43ada2c6096594f03, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
