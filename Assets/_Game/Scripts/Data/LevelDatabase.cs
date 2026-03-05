@@ -90,7 +90,7 @@ namespace FoodMatch.Data
                           $"{lvl.GetDisplayName()} | " +
                           $"Foods: {lvl.totalFoodCount} | " +
                           $"Layers: {lvl.layerCount} | " +
-                          $"Customers: {lvl.maxActiveCustomers}");
+                          $"Customers: {lvl.maxActiveOrders}");
             }
         }
 #endif

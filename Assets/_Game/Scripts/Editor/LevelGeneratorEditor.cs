@@ -249,13 +249,13 @@ namespace FoodMatch.Editor
             config.levelIndex = index;
             int maxFoodTypes = _foodDb != null ? _foodDb.allFoods.Count : 10;
 
-            GetLevelStats(index, maxFoodTypes, out int totalFood, out int layers, out int cols, out int rows, out int customers, out int types);
+            GetLevelStats(index, maxFoodTypes, out int totalFood, out int layers, out int cols, out int rows, out int Orders, out int types);
 
             config.totalFoodCount = totalFood;
             config.layerCount = layers;
             config.trayColumns = cols;
             config.trayRows = rows;
-            config.maxActiveCustomers = customers;
+            config.maxActiveOrders = Orders;
             config.backupTrayCapacity = 5;
             config.timeLimitSeconds = 0f;
 

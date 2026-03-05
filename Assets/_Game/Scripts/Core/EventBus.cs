@@ -21,15 +21,17 @@ namespace FoodMatch.Core
         /// <summary>Khi 1 món ăn bị đẩy vào khay thừa (không match).</summary>
         public static event Action<FoodItemData> OnFoodSentToBackup;
 
-        // ─── Customer Events ──────────────────────────────────────────────────
-        /// <summary>Khi 1 khách hàng đã nhận đủ toàn bộ order.</summary>
-        public static event Action<int> OnCustomerOrderComplete; // customerID
+        // ─── Order Events ─────────────────────────────────────────────────── THÊM MỚI ───
+        /// <summary>Khi 1 order hoàn thành (nhận đủ 3 món).</summary>
+        public static event Action<int> OnOrderCompleted;  // orderTrayIndex
 
-        /// <summary>Khi 1 khách hàng mới bước vào.</summary>
-        public static event Action<int> OnCustomerArrived; // customerID
+        /// <summary>Khi 1 order rời khỏi màn hình xong.</summary>
+        public static event Action<int> OnOrderLeft;  // orderTrayIndex
 
+        /// <summary>Khi tất cả order trong level hoàn thành → Win.</summary>
+        public static event Action OnAllOrdersCompleted;
         // ─── Tray Events ──────────────────────────────────────────────────────
-        /// <summary>Khi khay thừa gần đầy (còn 1-2 ô trống). Trigger cảnh báo.</summary>
+        /// <summary>Khi khay thừa gần đầy (còn 1 ô trống). Trigger cảnh báo.</summary>
         public static event Action<int, int> OnBackupTrayWarning; // currentCount, maxCapacity
 
         /// <summary>Khi khay thừa ĐẦY hoàn toàn → THUA.</summary>
@@ -70,12 +72,16 @@ namespace FoodMatch.Core
         public static void RaiseFoodToBackup(FoodItemData food)
             => OnFoodSentToBackup?.Invoke(food);
 
-        public static void RaiseCustomerOrderComplete(int customerID)
-            => OnCustomerOrderComplete?.Invoke(customerID);
+        public static void RaiseOrderCompleted(int trayIndex)
+            => OnOrderCompleted?.Invoke(trayIndex);
 
-        public static void RaiseCustomerArrived(int customerID)
-            => OnCustomerArrived?.Invoke(customerID);
+        public static void RaiseOrderLeft(int trayIndex)
+            => OnOrderLeft?.Invoke(trayIndex);
 
+        public static void RaiseAllOrdersCompleted()
+            => OnAllOrdersCompleted?.Invoke();
+        public static void RaiseBackupExpanded(int newCapacity)
+    => OnBackupTrayExpanded?.Invoke(newCapacity);
         public static void RaiseBackupWarning(int current, int max)
             => OnBackupTrayWarning?.Invoke(current, max);
 
@@ -109,8 +115,9 @@ namespace FoodMatch.Core
             OnFoodSelected = null;
             OnFoodMatchedCustomer = null;
             OnFoodSentToBackup = null;
-            OnCustomerOrderComplete = null;
-            OnCustomerArrived = null;
+            OnOrderCompleted = null;
+            OnOrderLeft = null;
+            OnAllOrdersCompleted = null;
             OnBackupTrayWarning = null;
             OnBackupTrayFull = null;
             OnBackupTrayExpanded = null;

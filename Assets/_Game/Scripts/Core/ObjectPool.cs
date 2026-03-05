@@ -5,7 +5,6 @@ namespace FoodMatch.Core
 {
     /// <summary>
     /// Generic Object Pool dùng chung cho mọi loại GameObject.
-    /// Cách dùng: pool.Get() để lấy object, pool.Return(obj) để trả lại.
     /// </summary>
     public class ObjectPool
     {

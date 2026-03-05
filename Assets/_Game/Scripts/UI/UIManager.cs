@@ -1,6 +1,8 @@
 ﻿using UnityEngine;
 using DG.Tweening;
 using System;
+using FoodMatch.Level;
+using FoodMatch.Managers;
 
 public class UIManager : MonoBehaviour
 {
@@ -48,7 +50,6 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    // Gom chuỗi Loading -> Logo tuyệt vời của Huy vào đây
     private void ShowBootSequence(Action onComplete)
     {
         SetPanel(panelLoading, true);
@@ -120,6 +121,7 @@ public class UIManager : MonoBehaviour
         }
 
         // 2. Báo cho GameManager biết để đổi State sang Play (hoặc LoadLevel)
-        GameManager.Instance.ChangeState(GameState.Play);
+        int levelToLoad = SaveManager.CurrentLevel;
+        LevelManager.Instance.RequestLoadLevel(levelToLoad);
     }
 }

@@ -7,94 +7,92 @@ namespace FoodMatch.Level
 {
     /// <summary>
     /// Theo dõi tiến trình trong 1 level đang chạy.
-    /// - Đếm số khách đã hoàn thành order
-    /// - Đếm số món còn lại trên khay
-    /// - Phát sự kiện Win/Lose khi điều kiện thỏa mãn
-    /// Gắn vào GameObject "LevelManager" trong Scene Game.
+    ///   - Đếm số order đã hoàn thành
+    ///   - Lắng nghe BackupTray đầy → Lose
+    ///   - Lắng nghe AllOrdersCompleted → Win
+    /// Gắn vào cùng GameObject "LevelManager".
     /// </summary>
     public class LevelProgressTracker : MonoBehaviour
     {
         // ─── Runtime State ────────────────────────────────────────────────────
-        private LevelConfig _currentLevel;
-        private int _totalCustomers;
-        private int _customersCompleted;
-        private int _totalFoodOnTray;
+        private LevelConfig _currentConfig;
+        private int _totalOrders;
+        private int _ordersCompleted;
         private int _foodDelivered;
         private bool _isLevelOver;
 
-        // ─── Public Readonly Properties ───────────────────────────────────────
-        public int CustomersCompleted => _customersCompleted;
-        public int TotalCustomers => _totalCustomers;
+        // ─── Public Properties ────────────────────────────────────────────────
+        public int OrdersCompleted => _ordersCompleted;
+        public int TotalOrders => _totalOrders;
         public int FoodDelivered => _foodDelivered;
         public bool IsLevelOver => _isLevelOver;
 
-        /// <summary>Tiến độ hoàn thành level (0f -> 1f).</summary>
-        public float Progress =>
-            _totalCustomers == 0 ? 0f :
-            (float)_customersCompleted / _totalCustomers;
+        public float Progress => _totalOrders == 0
+            ? 0f
+            : (float)_ordersCompleted / _totalOrders;
 
-        // ─── Initialization ───────────────────────────────────────────────────
+        // ─── Init ─────────────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Khởi tạo tracker với config của level hiện tại.
-        /// Gọi từ LevelManager sau khi load level xong.
-        /// </summary>
         public void Initialize(LevelConfig config)
         {
-            _currentLevel = config;
-            _totalFoodOnTray = config.totalFoodCount;
+            _currentConfig = config;
             _isLevelOver = false;
             _foodDelivered = 0;
-            _customersCompleted = 0;
+            _ordersCompleted = 0;
 
-            // Tính tổng số khách: tổng món / 3 món mỗi khách
-            _totalCustomers = config.totalFoodCount / GameConstants.FOOD_SET_SIZE;
+            // totalFoodCount / 3 = số order
+            _totalOrders = config.totalFoodCount / GameConstants.FOOD_SET_SIZE;
 
             Debug.Log($"[LevelProgressTracker] Level {config.levelIndex} bắt đầu. " +
-                      $"Tổng món: {_totalFoodOnTray} | " +
-                      $"Tổng khách: {_totalCustomers}");
+                      $"Tổng món: {config.totalFoodCount} | " +
+                      $"Tổng order: {_totalOrders}");
 
             SubscribeEvents();
         }
 
-        // ─── Event Subscription ───────────────────────────────────────────────
+        // ─── Events ───────────────────────────────────────────────────────────
 
         private void SubscribeEvents()
         {
-            EventBus.OnCustomerOrderComplete += HandleCustomerComplete;
+            // Dùng đúng tên event trong EventBus hiện tại
+            EventBus.OnAllOrdersCompleted += HandleAllOrdersCompleted;
             EventBus.OnBackupTrayFull += HandleBackupFull;
             EventBus.OnFoodMatchedCustomer += HandleFoodMatched;
+            EventBus.OnOrderCompleted += HandleOrderCompleted;
         }
 
         private void UnsubscribeEvents()
         {
-            EventBus.OnCustomerOrderComplete -= HandleCustomerComplete;
+            EventBus.OnAllOrdersCompleted -= HandleAllOrdersCompleted;
             EventBus.OnBackupTrayFull -= HandleBackupFull;
             EventBus.OnFoodMatchedCustomer -= HandleFoodMatched;
+            EventBus.OnOrderCompleted -= HandleOrderCompleted;
         }
 
-        // ─── Event Handlers ───────────────────────────────────────────────────
+        // ─── Handlers ─────────────────────────────────────────────────────────
 
-        private void HandleFoodMatched(FoodItemData food, int customerID)
+        private void HandleFoodMatched(FoodItemData food, int orderIndex)
         {
             if (_isLevelOver) return;
             _foodDelivered++;
         }
 
-        private void HandleCustomerComplete(int customerID)
+        private void HandleOrderCompleted(int trayIndex)
         {
             if (_isLevelOver) return;
+            _ordersCompleted++;
 
-            _customersCompleted++;
+            Debug.Log($"[LevelProgressTracker] Order {trayIndex} hoàn thành. " +
+                      $"{_ordersCompleted}/{_totalOrders}");
+        }
 
-            Debug.Log($"[LevelProgressTracker] Khách {customerID} hoàn thành. " +
-                      $"{_customersCompleted}/{_totalCustomers}");
-
-            // Kiểm tra Win
-            if (_customersCompleted >= _totalCustomers)
-            {
-                TriggerWin();
-            }
+        /// <summary>
+        /// OrderQueue báo tất cả order xong → Win.
+        /// </summary>
+        private void HandleAllOrdersCompleted()
+        {
+            if (_isLevelOver) return;
+            TriggerWin();
         }
 
         private void HandleBackupFull()
@@ -110,16 +108,15 @@ namespace FoodMatch.Level
             if (_isLevelOver) return;
             _isLevelOver = true;
 
-            // Mở khóa level tiếp theo
-            SaveManager.UnlockNextLevel(_currentLevel.levelIndex);
+            SaveManager.UnlockNextLevel(_currentConfig.levelIndex);
 
-            // Delay nhỏ trước khi phát event để animation kịp chạy
+            // Delay nhỏ để animation kịp chạy trước khi show popup
             Invoke(nameof(RaiseWinEvent), GameConstants.WIN_SEQUENCE_DELAY);
         }
 
         private void RaiseWinEvent()
         {
-            EventBus.RaiseLevelWin(_currentLevel.levelIndex);
+            EventBus.RaiseLevelWin(_currentConfig.levelIndex);
         }
 
         private void TriggerLose()
@@ -127,8 +124,8 @@ namespace FoodMatch.Level
             if (_isLevelOver) return;
             _isLevelOver = true;
 
-            Debug.Log($"[LevelProgressTracker] LOSE! Level {_currentLevel.levelIndex}.");
-            EventBus.RaiseLevelLose(_currentLevel.levelIndex);
+            Debug.Log($"[LevelProgressTracker] LOSE! Level {_currentConfig.levelIndex}.");
+            EventBus.RaiseLevelLose(_currentConfig.levelIndex);
         }
 
         // ─── Cleanup ──────────────────────────────────────────────────────────
@@ -150,11 +147,11 @@ namespace FoodMatch.Level
         private void DebugPrintStatus()
         {
             Debug.Log($"[LevelProgressTracker] Status:\n" +
-                      $"  Level: {_currentLevel?.levelIndex}\n" +
-                      $"  Khách: {_customersCompleted}/{_totalCustomers}\n" +
-                      $"  Món đã giao: {_foodDelivered}/{_totalFoodOnTray}\n" +
-                      $"  Progress: {Progress:P0}\n" +
-                      $"  IsOver: {_isLevelOver}");
+                      $"  Level    : {_currentConfig?.levelIndex}\n" +
+                      $"  Orders   : {_ordersCompleted}/{_totalOrders}\n" +
+                      $"  Food giao: {_foodDelivered}\n" +
+                      $"  Progress : {Progress:P0}\n" +
+                      $"  IsOver   : {_isLevelOver}");
         }
 #endif
     }

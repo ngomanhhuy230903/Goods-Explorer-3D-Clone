@@ -23,9 +23,9 @@ namespace FoodMatch.Core
         [SerializeField] private GameObject checkmarkPrefab;
         [SerializeField] private int checkmarkPreloadCount = 10;
 
-        [Header("─── Customer Pool ────────────────────")]
-        [SerializeField] private GameObject customerPrefab;
-        [SerializeField] private int customerPreloadCount = 5;
+        [Header("─── Order Pool ────────────────────")]
+        [SerializeField] private GameObject orderPrefab;
+        [SerializeField] private int orderPreloadCount = 5;
 
         // ─── Internal dictionaries ───────────────────────────────────────────
         // Key: foodID → Pool tương ứng
@@ -34,12 +34,12 @@ namespace FoodMatch.Core
 
         private ObjectPool _sparklePool;
         private ObjectPool _checkmarkPool;
-        private ObjectPool _customerPool;
+        private ObjectPool _orderPool;
 
         // Container transforms (giữ Hierarchy gọn gàng)
         private Transform _foodContainer;
         private Transform _vfxContainer;
-        private Transform _customerContainer;
+        private Transform _orderContainer;
 
         // ─────────────────────────────────────────────────────────────────────
         private void Awake()
@@ -59,7 +59,7 @@ namespace FoodMatch.Core
             InitContainers();
             InitFoodPools();
             InitVFXPools();
-            InitCustomerPool();
+            InitOrderPool();
         }
 
         // ─── Init helpers ────────────────────────────────────────────────────
@@ -68,7 +68,7 @@ namespace FoodMatch.Core
         {
             _foodContainer = CreateContainer("Pool_Foods");
             _vfxContainer = CreateContainer("Pool_VFX");
-            _customerContainer = CreateContainer("Pool_Customers");
+            _orderContainer = CreateContainer("Pool_Orders");
         }
 
         private Transform CreateContainer(string name)
@@ -112,10 +112,10 @@ namespace FoodMatch.Core
                 _checkmarkPool = new ObjectPool(checkmarkPrefab, _vfxContainer, checkmarkPreloadCount);
         }
 
-        private void InitCustomerPool()
+        private void InitOrderPool()
         {
-            if (customerPrefab != null)
-                _customerPool = new ObjectPool(customerPrefab, _customerContainer, customerPreloadCount);
+            if (orderPrefab != null)
+                _orderPool = new ObjectPool(orderPrefab, _orderContainer, orderPreloadCount);
         }
 
         // ─── Public API ──────────────────────────────────────────────────────
@@ -151,10 +151,10 @@ namespace FoodMatch.Core
         public void ReturnCheckmark(GameObject obj)
             => _checkmarkPool?.Return(obj);
 
-        public GameObject GetCustomer(Vector3 pos)
-            => _customerPool?.Get(pos) ?? null;
+        public GameObject GetOrder(Vector3 pos)
+            => _orderPool?.Get(pos) ?? null;
 
-        public void ReturnCustomer(GameObject obj)
-            => _customerPool?.Return(obj);
+        public void ReturnOrder(GameObject obj)
+            => _orderPool?.Return(obj);
     }
 }
