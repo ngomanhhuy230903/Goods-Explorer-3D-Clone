@@ -42,8 +42,8 @@ namespace FoodMatch.Data
         public int trayRows = 3;
 
         [Header("─── Order Setup ──────────────────")]
-        [Tooltip("Số khách hàng tối đa cùng lúc trên màn hình. Max=2 theo thiết kế.")]
-        [Range(1, 2)]
+        [Tooltip("Số khách hàng tối đa cùng lúc trên màn hình. Max=4 theo thiết kế.")]
+        [Range(1, 4)]
         public int maxActiveOrders = 2;
 
         [Header("─── Backup Tray ─────────────────────")]
