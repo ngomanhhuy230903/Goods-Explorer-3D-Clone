@@ -451,13 +451,16 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   mainTrayArea: {fileID: 1183881288}
-  slotPrefab: {fileID: 0}
-  slotGapRatio: 0.08
-  rowOffsetY: 20
-  rowScaleStep: 0.92
+  cellPrefab: {fileID: 6879307955932847306, guid: 12309e0b05b2c1644a1128a69198885b,
+    type: 3}
+  cellContainer: {fileID: 0}
+  cellSpacing: 2
+  padding: 8
+  cellDepthZ: 0
   spawnDuration: 0.35
   spawnEase: 27
-  previewSides: 4
+  staggerDelay: 0.03
+  previewColumns: 3
   previewRows: 2
 --- !u!224 &194851331 stripped
 RectTransform:
@@ -1244,6 +1247,7 @@ MonoBehaviour:
   levelDatabase: {fileID: 11400000, guid: 827fdc5362d3dd64c83713b564669a56, type: 2}
   orderQueue: {fileID: 262894066}
   backupTray: {fileID: 1880608952}
+  foodGridSpawner: {fileID: 186209384}
   progressTracker: {fileID: 798460670}
   backupTraySpawner: {fileID: 1880608951}
 --- !u!4 &798460672

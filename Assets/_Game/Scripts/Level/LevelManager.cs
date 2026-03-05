@@ -10,7 +10,7 @@ namespace FoodMatch.Level
     /// Điều phối toàn bộ vòng đời 1 level:
     ///   1. Nhận lệnh load từ GameManager
     ///   2. Đọc LevelConfig từ LevelDatabase
-    ///   3. Khởi tạo OrderQueue, BackupTray, FoodTray
+    ///   3. Khởi tạo OrderQueue, BackupTray, FoodGridSpawner
     ///   4. Lắng nghe Win/Lose từ LevelProgressTracker
     /// Gắn vào GameObject "LevelManager" trong Scene Game.
     /// </summary>
@@ -25,87 +25,49 @@ namespace FoodMatch.Level
         [Header("─── Systems ─────────────────────────")]
         [SerializeField] private OrderQueue orderQueue;
         [SerializeField] private BackupTray backupTray;
-  //    [SerializeField] private FoodGridSpawner foodGridSpawner;
+        [SerializeField] private FoodGridSpawner foodGridSpawner;   // ← bỏ comment
         [SerializeField] private LevelProgressTracker progressTracker;
+
+        [Header("─── Spawners ────────────────────────")]
+        [SerializeField] private BackupTraySpawner backupTraySpawner;
 
         // ─── Runtime ──────────────────────────────────────────────────────────
         public LevelConfig CurrentConfig { get; private set; }
         public int CurrentLevelIndex { get; private set; } = 1;
-        [Header("─── Spawners ────────────────────────")]
-        [SerializeField] private BackupTraySpawner backupTraySpawner;
+
         // ─────────────────────────────────────────────────────────────────────
         private void Awake()
         {
-            if (Instance != null && Instance != this)
-            {
-                Destroy(gameObject);
-                return;
-            }
+            if (Instance != null && Instance != this) { Destroy(gameObject); return; }
             Instance = this;
         }
 
-        private void OnEnable()
-        {
-            GameManager.OnGameStateChanged += HandleGameStateChanged;
-        }
-
-        private void OnDisable()
-        {
-            GameManager.OnGameStateChanged -= HandleGameStateChanged;
-        }
+        private void OnEnable() => GameManager.OnGameStateChanged += HandleGameStateChanged;
+        private void OnDisable() => GameManager.OnGameStateChanged -= HandleGameStateChanged;
 
         // ─── Game State Handler ───────────────────────────────────────────────
 
         private void HandleGameStateChanged(GameState state)
         {
-            switch (state)
-            {
-                case GameState.LoadLevel:
-                    LoadLevel(CurrentLevelIndex);
-                    break;
-
-                case GameState.Play:
-                    // LoadLevel tự gọi StartLevel,
-                    // nhưng nếu GameManager skip LoadLevel thẳng vào Play thì xử lý ở đây
-                    if (CurrentConfig == null)
-                        LoadLevel(CurrentLevelIndex);
-                    break;
-            }
+            if (state == GameState.LoadLevel)
+                LoadLevel(CurrentLevelIndex);
         }
 
         // ─── Public API ───────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Set level cần chơi rồi báo GameManager chuyển sang LoadLevel.
-        /// Gọi từ UI khi player bấm nút Play hoặc Next Level.
-        /// </summary>
         public void RequestLoadLevel(int levelIndex)
         {
             CurrentLevelIndex = levelIndex;
             GameManager.Instance.ChangeState(GameState.LoadLevel);
         }
 
-        /// <summary>
-        /// Chơi lại level hiện tại.
-        /// </summary>
-        public void RestartCurrentLevel()
-        {
-            RequestLoadLevel(CurrentLevelIndex);
-        }
+        public void RestartCurrentLevel() => RequestLoadLevel(CurrentLevelIndex);
 
-        /// <summary>
-        /// Qua level tiếp theo.
-        /// </summary>
         public void LoadNextLevel()
         {
             var next = levelDatabase.GetNextLevel(CurrentLevelIndex);
-            if (next != null)
-                RequestLoadLevel(next.levelIndex);
-            else
-            {
-                // Hết game — về menu
-                GameManager.Instance.ChangeState(GameState.Menu);
-            }
+            if (next != null) RequestLoadLevel(next.levelIndex);
+            else GameManager.Instance.ChangeState(GameState.Menu);
         }
 
         // ─── Core Load Flow ───────────────────────────────────────────────────
@@ -121,19 +83,18 @@ namespace FoodMatch.Level
             }
 
             CurrentConfig = config;
-            Debug.Log($"[LevelManager] Đang load Level {levelIndex}: {config.GetDisplayName()}");
+            Debug.Log($"[LevelManager] Load Level {levelIndex}: {config.GetDisplayName()}");
 
-            // 2. Reset các hệ thống cũ
+            // 2. Reset hệ thống cũ
             ResetAllSystems();
 
-            // 3. Khởi tạo theo thứ tự phụ thuộc:
-            //    BackupTray → FoodGrid → OrderQueue → ProgressTracker
+            // 3. Khởi tạo theo thứ tự phụ thuộc
             InitBackupTray(config);
-          //InitFoodGrid(config);
+            InitFoodGrid(config);        // ← spawn grid ngay tại đây
             InitOrderQueue(config);
             InitProgressTracker(config);
 
-            // 4. Chuyển sang Play
+            // 4. Chuyển sang Play — UIManager sẽ hiện panelGame
             GameManager.Instance.ChangeState(GameState.Play);
 
             Debug.Log($"[LevelManager] Level {levelIndex} sẵn sàng!");
@@ -143,51 +104,33 @@ namespace FoodMatch.Level
 
         private void InitBackupTray(LevelConfig config)
         {
-            if (backupTray == null)
-            {
-                Debug.LogWarning("[LevelManager] BackupTray chưa được gán!");
-                return;
-            }
+            if (backupTray == null) { Debug.LogWarning("[LevelManager] BackupTray chưa gán!"); return; }
 
             if (backupTraySpawner != null)
-            {
-                // BackupTraySpawner lo cả việc sinh slot lẫn gọi ResetTray bên trong
                 backupTraySpawner.SpawnSlots(config.backupTrayCapacity);
-            }
             else
-            {
-                // Fallback: không có spawner thì dùng trực tiếp như cũ
                 backupTray.ResetTray(config.backupTrayCapacity);
-            }
         }
 
-        //private void InitFoodGrid(LevelConfig config)
-        //{
-        //    if (foodGridSpawner == null)
-        //    {
-        //        Debug.LogWarning("[LevelManager] FoodGridSpawner chưa được gán!");
-        //        return;
-        //    }
-        //    foodGridSpawner.SpawnGrid(config);
-        //}
+        private void InitFoodGrid(LevelConfig config)
+        {
+            if (foodGridSpawner == null)
+            {
+                Debug.LogWarning("[LevelManager] FoodGridSpawner chưa gán!");
+                return;
+            }
+            foodGridSpawner.SpawnGrid(config);
+        }
 
         private void InitOrderQueue(LevelConfig config)
         {
-            if (orderQueue == null)
-            {
-                Debug.LogWarning("[LevelManager] OrderQueue chưa được gán!");
-                return;
-            }
+            if (orderQueue == null) { Debug.LogWarning("[LevelManager] OrderQueue chưa gán!"); return; }
             orderQueue.Initialize(config);
         }
 
         private void InitProgressTracker(LevelConfig config)
         {
-            if (progressTracker == null)
-            {
-                Debug.LogWarning("[LevelManager] LevelProgressTracker chưa được gán!");
-                return;
-            }
+            if (progressTracker == null) { Debug.LogWarning("[LevelManager] ProgressTracker chưa gán!"); return; }
             progressTracker.Initialize(config);
         }
 
@@ -195,7 +138,7 @@ namespace FoodMatch.Level
         {
             orderQueue?.Reset();
             backupTray?.ResetTray(5);
-         // foodGridSpawner?.ClearGrid();
+            foodGridSpawner?.ClearGrid();   // ← clear grid cũ trước khi spawn mới
         }
 
         // ─── Debug ────────────────────────────────────────────────────────────
