@@ -161,7 +161,7 @@ namespace FoodMatch.Tray
         }
 
         /// <summary>Dồn lại vị trí các food sau khi có 1 food bị lấy ra.</summary>
-        private void ReArrangeSlots()
+        public void ReArrangeSlots()
         {
             for (int i = 0; i < _foodsInSlots.Count; i++)
             {
@@ -196,6 +196,16 @@ namespace FoodMatch.Tray
             if (trayBorderImage == null) return;
             trayBorderImage.DOKill();
             trayBorderImage.color = normalColor;
+        }
+        /// <summary>
+        /// Nhận danh sách slot Transform mới từ BackupTraySpawner.
+        /// Gọi mỗi khi level load hoặc khi thêm slot qua booster.
+        /// </summary>
+        public void SetSlotAnchors(List<Transform> newAnchors)
+        {
+            slotAnchors.Clear();
+            slotAnchors.AddRange(newAnchors);
+            Debug.Log($"[BackupTray] SetSlotAnchors: {slotAnchors.Count} anchors.");
         }
     }
 }

@@ -31,7 +31,8 @@ namespace FoodMatch.Level
         // ─── Runtime ──────────────────────────────────────────────────────────
         public LevelConfig CurrentConfig { get; private set; }
         public int CurrentLevelIndex { get; private set; } = 1;
-
+        [Header("─── Spawners ────────────────────────")]
+        [SerializeField] private BackupTraySpawner backupTraySpawner;
         // ─────────────────────────────────────────────────────────────────────
         private void Awake()
         {
@@ -147,7 +148,17 @@ namespace FoodMatch.Level
                 Debug.LogWarning("[LevelManager] BackupTray chưa được gán!");
                 return;
             }
-            backupTray.ResetTray(config.backupTrayCapacity);
+
+            if (backupTraySpawner != null)
+            {
+                // BackupTraySpawner lo cả việc sinh slot lẫn gọi ResetTray bên trong
+                backupTraySpawner.SpawnSlots(config.backupTrayCapacity);
+            }
+            else
+            {
+                // Fallback: không có spawner thì dùng trực tiếp như cũ
+                backupTray.ResetTray(config.backupTrayCapacity);
+            }
         }
 
         //private void InitFoodGrid(LevelConfig config)

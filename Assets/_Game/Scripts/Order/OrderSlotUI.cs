@@ -16,9 +16,6 @@ namespace FoodMatch.Order
         [Tooltip("GameObject dấu tích — bật khi slot đã nhận đủ món.")]
         [SerializeField] private GameObject checkmarkObject;
 
-        [Tooltip("Image viền highlight — bật khi slot đang chờ nhận món.")]
-        [SerializeField] private GameObject highlightObject;
-
         [Tooltip("Scale mà food phải DOScale về khi bay đến slot này.")]
         [SerializeField] private Vector3 foodTargetScale = new Vector3(0.5f, 0.5f, 0.5f);
 
@@ -35,7 +32,6 @@ namespace FoodMatch.Order
         private void Awake()
         {
             checkmarkObject?.SetActive(false);
-            highlightObject?.SetActive(true);
         }
 
         // ─── Public API ───────────────────────────────────────────────────────
@@ -48,8 +44,6 @@ namespace FoodMatch.Order
         {
             if (IsDelivered) return;
             IsDelivered = true;
-
-            highlightObject?.SetActive(false);
 
             if (checkmarkObject != null)
             {
@@ -78,7 +72,6 @@ namespace FoodMatch.Order
             transform.DOKill();
             transform.localScale = Vector3.one;
             checkmarkObject?.SetActive(false);
-            highlightObject?.SetActive(true);
         }
     }
 }
