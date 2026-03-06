@@ -7,24 +7,6 @@ using FoodMatch.Food;
 
 namespace FoodMatch.Tray
 {
-    /// <summary>
-    /// Gắn vào FoodTray prefab (cellPrefab của FoodGridSpawner).
-    ///
-    /// ── Chiến lược spawn ──────────────────────────────────────────────────────
-    /// Food KHÔNG làm con của anchor hay cellContainer.
-    /// Thay vào đó, food được đặt trong neutralContainer (scale = 1,1,1)
-    /// và dùng <see cref="SlotFollower"/> để bám theo world position của anchor
-    /// mỗi frame qua LateUpdate.
-    ///
-    /// Lợi ích:
-    ///   • Scale của FoodTray / CellContainer không bao giờ ảnh hưởng food.
-    ///   • Khi food cần bay đi order → SlotFollower.Unfollow() → DoTween tự do.
-    ///   • Promote layer: chỉ đổi targetSlot, không cần reparent.
-    ///
-    /// Yêu cầu:
-    ///   • neutralContainer phải có localScale (1,1,1) và KHÔNG bị scale runtime.
-    ///   • FoodItem prefab phải có component <see cref="SlotFollower"/>.
-    /// </summary>
     public class FoodTray : MonoBehaviour
     {
         // ─── Inspector ────────────────────────────────────────────────────────
@@ -41,7 +23,6 @@ namespace FoodMatch.Tray
             new List<FoodItem>()
         };
 
-        // Map: FoodItem → anchor đang giữ nó (để biết anchor nào đang dùng)
         private readonly Dictionary<FoodItem, Transform> _itemAnchorMap = new();
 
         public int TrayID { get; private set; }
@@ -52,16 +33,6 @@ namespace FoodMatch.Tray
 
         // ─── Public API ───────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Spawn food vào các anchor. Gọi SAU KHI cell animation (scale) xong.
-        /// </summary>
-        /// <param name="foods">Danh sách FoodItemData cần spawn.</param>
-        /// <param name="trayID">ID của tray này.</param>
-        /// <param name="neutralContainer">
-        ///     Container chứa food. Phải có localScale (1,1,1).
-        ///     Thường là một GameObject anh em với CellContainer.
-        /// </param>
-        /// <param name="globalDelay">Delay trước khi chạy pop-in animation.</param>
         public void SpawnFoods(List<FoodItemData> foods, int trayID,
                                Transform neutralContainer, float globalDelay = 0f)
         {
@@ -79,27 +50,33 @@ namespace FoodMatch.Tray
                 Transform anchor = allAnchors[i];
                 int layerIdx = GetLayerIndex(anchor);
 
-                // ── 1. Lấy food từ pool ─────────────────────────────────────
+                // ── 1. Lấy scale gốc từ prefab TRƯỚC KHI làm bất cứ điều gì ──
+                // Đây là nguồn sự thật duy nhất, không phụ thuộc parent
+                Vector3 prefabScale = data.prefab.transform.localScale;
+
+                // ── 2. Lấy food từ pool (position tạm, sẽ set lại sau) ────────
                 GameObject go = PoolManager.Instance.GetFood(data.foodID, anchor.position);
                 if (go == null) continue;
 
-                // ── 2. Đặt vào neutralContainer — KHÔNG làm con anchor/tray ─
-                go.transform.SetParent(neutralContainer, worldPositionStays: false);
+                // ── 3. SetParent neutralContainer, GIỮ world transform ─────────
+                // worldPositionStays: true → Unity giữ world position/rotation
+                // nhưng localScale sẽ bị tính lại → ta override ngay bên dưới
+                go.transform.SetParent(neutralContainer, worldPositionStays: true);
 
-                // ── 3. Áp world scale từ data (neutralContainer scale=1 nên
-                //        localScale = world scale)
-                //go.transform.localScale = data.normalScale;
+                // ── 4. Override localScale về đúng prefab scale ────────────────
+                // neutralContainer luôn scale (1,1,1) nên localScale = world scale
+                go.transform.localScale = prefabScale;
 
-                // ── 4. Vị trí ban đầu = world position của anchor ───────────
+                // ── 5. Ép đúng world position của anchor ──────────────────────
                 go.transform.position = anchor.position;
 
-                // ── 5. Gắn SlotFollower để bám anchor mỗi frame ─────────────
+                // ── 6. Gắn SlotFollower bám anchor mỗi frame ─────────────────
                 SlotFollower follower = go.GetComponent<SlotFollower>();
                 if (follower == null)
                     follower = go.AddComponent<SlotFollower>();
                 follower.Follow(anchor);
 
-                // ── 6. Khởi tạo FoodItem ─────────────────────────────────────
+                // ── 7. Khởi tạo FoodItem (Initialize sẽ gọi SetLayerVisual) ───
                 FoodItem item = go.GetComponent<FoodItem>();
                 if (item == null)
                 {
@@ -114,13 +91,14 @@ namespace FoodMatch.Tray
                 _stacks[layerIdx].Add(item);
                 _itemAnchorMap[item] = anchor;
 
-                // ── 7. Pop-in animation chỉ layer 0 ──────────────────────────
+                // ── 8. Pop-in animation chỉ layer 0 ──────────────────────────
+                // targetScale lấy từ prefab (đã biết chắc đúng)
+                // set về zero SAU khi đã lưu targetScale
                 if (layerIdx == 0)
                 {
-                    Vector3 targetScale = data.normalScale;
                     go.transform.localScale = Vector3.zero;
                     go.transform
-                        .DOScale(targetScale, 0.3f)
+                        .DOScale(prefabScale, 0.3f)
                         .SetDelay(globalDelay + i * 0.04f)
                         .SetEase(Ease.OutBack)
                         .SetUpdate(false);
@@ -128,7 +106,6 @@ namespace FoodMatch.Tray
             }
         }
 
-        /// <summary>Player tap vào item. Trả về item nếu hợp lệ, null nếu bị khoá.</summary>
         public FoodItem TryPopItem(FoodItem item)
         {
             if (!_stacks[0].Contains(item))
@@ -137,7 +114,6 @@ namespace FoodMatch.Tray
                 return null;
             }
 
-            // Ngừng bám anchor → DoTween / Animation bên ngoài tự do điều khiển
             item.GetComponent<SlotFollower>()?.Unfollow();
             _itemAnchorMap.Remove(item);
 
@@ -179,9 +155,10 @@ namespace FoodMatch.Tray
             if (targetAnchor == null) return;
 
             SlotFollower follower = promoted.GetComponent<SlotFollower>();
-
-            // Tạm dừng bám để DoTween bay mượt
             follower?.Unfollow();
+
+            // Scale đích lấy từ prefab gốc
+            Vector3 prefabScale = promoted.Data.prefab.transform.localScale;
 
             promoted.transform
                 .DOMove(targetAnchor.position, 0.3f)
@@ -189,10 +166,8 @@ namespace FoodMatch.Tray
                 .SetUpdate(false)
                 .OnComplete(() =>
                 {
-                    // Sau khi bay tới nơi, bám anchor mới
+                    promoted.transform.localScale = prefabScale;
                     follower?.Follow(targetAnchor);
-                    promoted.transform.localScale = promoted.Data.prefab.transform.localScale;
-
                     _itemAnchorMap[promoted] = targetAnchor;
                 });
 
@@ -221,9 +196,6 @@ namespace FoodMatch.Tray
             return 2;
         }
 
-        /// <summary>
-        /// Trả về anchor chưa có food nào bám theo (dựa vào _itemAnchorMap).
-        /// </summary>
         private Transform GetFreeAnchor(List<Transform> anchors)
         {
             foreach (var a in anchors)
@@ -231,10 +203,8 @@ namespace FoodMatch.Tray
                 bool occupied = false;
                 foreach (var kv in _itemAnchorMap)
                     if (kv.Value == a) { occupied = true; break; }
-
                 if (!occupied) return a;
             }
-            // Fallback: slot đầu tiên
             return anchors.Count > 0 ? anchors[0] : null;
         }
     }

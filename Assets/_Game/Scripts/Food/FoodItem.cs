@@ -21,20 +21,21 @@ namespace FoodMatch.Food
         public Transform AnchorRef { get; private set; }
         public FoodMatch.Tray.FoodTray OwnerTray { get; set; }
 
-        // Lưu màu gốc để restore lại khi lên layer 0
         private Color _originalColor;
         private Collider _collider;
+
+        // Scale gốc lấy từ prefab — được set trong Initialize(), KHÔNG dùng Awake()
+        // vì Awake() chạy lúc preload trong pool container nên localScale bị ảnh hưởng parent
         private Vector3 _originalScale;
+
         // ─────────────────────────────────────────────────────────────────────
         private void Awake()
         {
             _collider = GetComponent<Collider>();
-            _originalScale = transform.localScale;
-            // Tự tìm MeshRenderer nếu chưa gán
+
             if (meshRenderer == null)
                 meshRenderer = GetComponentInChildren<MeshRenderer>();
 
-            // Lưu màu gốc của material
             if (meshRenderer != null)
                 _originalColor = meshRenderer.material.color;
         }
@@ -47,7 +48,6 @@ namespace FoodMatch.Food
 
         public void OnDespawn()
         {
-            // Restore màu gốc trước khi trả về pool
             RestoreOriginalColor();
             OwnerSlot = null;
             Data = null;
@@ -59,8 +59,9 @@ namespace FoodMatch.Food
         {
             Data = data;
 
-            // Lưu lại màu gốc mỗi lần Initialize
-            // (vì prefab khác nhau có màu gốc khác nhau)
+            // Luôn lấy scale từ prefab gốc — không phụ thuộc vào parent hiện tại
+            _originalScale = data.prefab.transform.localScale;
+
             if (meshRenderer != null)
                 _originalColor = meshRenderer.material.color;
 
@@ -83,9 +84,7 @@ namespace FoodMatch.Food
         private void ApplyActiveState()
         {
             gameObject.SetActive(true);
-           // transform.localScale = Data?.normalScale ?? Vector3.one;
-
-            // Restore màu gốc
+            // Không set scale ở đây — FoodTray lo việc set + pop-in animation
             RestoreOriginalColor();
 
             if (_collider != null)
@@ -95,9 +94,9 @@ namespace FoodMatch.Food
         private void ApplyGreyedState()
         {
             gameObject.SetActive(true);
+            // Scale theo tỉ lệ từ prefab gốc, không dùng giá trị cứng
             transform.localScale = _originalScale * 0.8f;
 
-            // Chỉ tint xám màu material hiện tại, không đổi material
             if (meshRenderer != null)
             {
                 Color grey = Data != null
@@ -136,6 +135,7 @@ namespace FoodMatch.Food
 
             transform.DOPunchPosition(randomDir * 0.15f, 0.35f, 5, 0.5f);
         }
+
         public void SetAnchorRef(Transform anchor) => AnchorRef = anchor;
     }
 }
