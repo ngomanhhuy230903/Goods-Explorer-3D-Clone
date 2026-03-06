@@ -416,6 +416,7 @@ GameObject:
   m_Component:
   - component: {fileID: 186209383}
   - component: {fileID: 186209384}
+  - component: {fileID: 186209385}
   m_Layer: 0
   m_Name: FoodGridSpawner
   m_TagString: Untagged
@@ -451,20 +452,39 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   mainTrayArea: {fileID: 1183881288}
-  cellPrefab: {fileID: 2365390968521678997, guid: 1d7256c52bd4e3049b1246d6fff6c4fb,
+  cellPrefab: {fileID: 6879307955932847306, guid: 12309e0b05b2c1644a1128a69198885b,
     type: 3}
   cellContainer: {fileID: 0}
   prefabDepth: 1
-  innerRadius: 0
-  autoFit: 1
-  fitRatio: 0.9
-  rowHeight: 1
+  prefabBaseWidth: 1
+  prefabHeightY: 1
+  containerPositionZ: 230
   baseY: 0
+  rowGap: 39
+  idleTimeBeforeRotate: 5
+  autoRotateSpeed: 20
+  rotateEaseInDuration: 1
+  rotateEaseOutDuration: 0.5
+  debugScaleXMultiplier: 1
+  debugRowHeightOverride: 0
+  verboseLog: 1
   spawnDuration: 0.35
   spawnEase: 27
   staggerDelay: 0.03
-  previewColumns: 3
-  previewRows: 2
+--- !u!114 &186209385
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 186209382}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 09006e684e250514da46ab0e2a0b5fac, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  trayStaggerDelay: 0.06
+  verboseLog: 1
 --- !u!224 &194851331 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 7474141742100322980, guid: 6cf43647e4797452ca8e8cc5521e6bec,
@@ -1250,9 +1270,10 @@ MonoBehaviour:
   levelDatabase: {fileID: 11400000, guid: 827fdc5362d3dd64c83713b564669a56, type: 2}
   orderQueue: {fileID: 262894066}
   backupTray: {fileID: 1880608952}
-  foodGridSpawner: {fileID: 186209384}
   progressTracker: {fileID: 798460670}
   backupTraySpawner: {fileID: 1880608951}
+  foodGridSpawner: {fileID: 186209384}
+  foodTraySpawner: {fileID: 186209385}
 --- !u!4 &798460672
 Transform:
   m_ObjectHideFlags: 0
@@ -2688,7 +2709,7 @@ PrefabInstance:
     - target: {fileID: 2479330069565763211, guid: b4fe985264293bb44b3346a135049335,
         type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: 6.81427
+      value: 6.814209
       objectReference: {fileID: 0}
     - target: {fileID: 2479330069565763211, guid: b4fe985264293bb44b3346a135049335,
         type: 3}
@@ -2858,7 +2879,7 @@ PrefabInstance:
     - target: {fileID: 8185658182485461416, guid: e0eb2b141de94de4fb27b0b6c850844c,
         type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: -3.000061
+      value: -3
       objectReference: {fileID: 0}
     - target: {fileID: 8185658182485461416, guid: e0eb2b141de94de4fb27b0b6c850844c,
         type: 3}
