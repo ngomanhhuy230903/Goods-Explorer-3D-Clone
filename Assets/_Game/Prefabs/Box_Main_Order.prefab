@@ -106,6 +106,7 @@ GameObject:
   - component: {fileID: 7961916979976110645}
   - component: {fileID: 5707658082673644392}
   - component: {fileID: 4039573362544012940}
+  - component: {fileID: -1467648714899254698}
   m_Layer: 0
   m_Name: Box_Main_Order
   m_TagString: Untagged
@@ -280,7 +281,7 @@ MonoBehaviour:
   m_PreserveMeshAssetOnDestroy: 0
   assetGuid: 
   m_Mesh: {fileID: 0}
-  m_VersionIndex: 673
+  m_VersionIndex: 682
   m_IsSelectable: 1
   m_SelectedFaces: 
   m_SelectedEdges: []
@@ -363,6 +364,30 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 6879307955932847306}
   m_Mesh: {fileID: 0}
+--- !u!114 &-1467648714899254698
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6879307955932847306}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5a57a42538f2a4f448b77496a20a6b25, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  layer0Anchors:
+  - {fileID: 8980141463871983039}
+  - {fileID: 4568036990996916822}
+  - {fileID: 3005048741900187922}
+  layer1Anchors:
+  - {fileID: 4830027960976714956}
+  - {fileID: 7976087281883569865}
+  - {fileID: 7354230336073218968}
+  layer2Anchors: []
+  spawnDuration: 0.3
+  spawnStagger: 0.04
+  spawnEase: 27
 --- !u!1 &6922643424401540392
 GameObject:
   m_ObjectHideFlags: 0

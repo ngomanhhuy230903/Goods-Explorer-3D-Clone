@@ -4,28 +4,31 @@ using UnityEngine;
 using UnityEngine.UI;
 using DG.Tweening;
 using FoodMatch.Core;
+using FoodMatch.Data;
 
 namespace FoodMatch.Order
 {
     /// <summary>
-    /// Loại 1 — Khay order trên UI (Top của màn hình).
-    /// Chỉ chứa 3 slot làm điểm neo để food 3D bay đến.
+    /// Khay order trên UI. Nhận OrderData, spawn food 3D icon tại các slot,
+    /// và là đích bay của food từ grid.
     /// </summary>
     public class OrderTray : MonoBehaviour, IPoolable
     {
         // ─── Inspector ────────────────────────────────────────────────────────
         [Header("─── Slots ───────────────────────────")]
-        [Tooltip("3 slot theo thứ tự 0→1→2.")]
         [SerializeField] private List<OrderSlotUI> slots = new List<OrderSlotUI>(3);
 
         [Header("─── Tray Background UI ───────────────")]
-        [Tooltip("Image nền của khay — đổi màu khi completed.")]
         [SerializeField] private Image trayBgImage;
         [SerializeField] private Color normalBgColor = Color.white;
         [SerializeField] private Color completedBgColor = new Color(0.6f, 1f, 0.6f, 1f);
 
         [Header("─── Completion VFX ────────────────────")]
         [SerializeField] private GameObject completionVFXRoot;
+
+        [Header("─── Data ────────────────────────────")]
+        [Tooltip("Tham chiếu đến FoodDatabase để lookup FoodItemData theo ID.")]
+        [SerializeField] private FoodDatabase foodDatabase;
 
         // ─── Runtime ──────────────────────────────────────────────────────────
         public OrderState State { get; private set; } = OrderState.Idle;
@@ -49,25 +52,20 @@ namespace FoodMatch.Order
         {
             State = OrderState.Idle;
             completionVFXRoot?.SetActive(false);
-
-            if (trayBgImage != null)
-                trayBgImage.color = normalBgColor;
+            if (trayBgImage != null) trayBgImage.color = normalBgColor;
         }
 
         public void OnDespawn()
         {
             _rectTransform.DOKill();
             OrderData = null;
-
-            foreach (var slot in slots)
-                slot.ResetSlot();
+            foreach (var slot in slots) slot.ResetSlot();
         }
 
         // ─── Public API ───────────────────────────────────────────────────────
 
         /// <summary>
-        /// Khởi tạo khay với dữ liệu order.
-        /// Gọi bởi OrderQueue.
+        /// Khởi tạo tray: lookup FoodItemData → spawn icon 3D tại tất cả slots → slide in.
         /// </summary>
         public void Initialize(OrderData orderData, int trayIndex,
                                Vector2 homePos, bool enterFromTop = true)
@@ -76,6 +74,23 @@ namespace FoodMatch.Order
             TrayIndex = trayIndex;
             _homeAnchoredPos = homePos;
 
+            // Lookup FoodItemData từ Database rồi truyền thẳng xuống slot
+            var foodData = foodDatabase != null
+                ? foodDatabase.GetFoodByID(orderData.FoodID)
+                : null;
+
+            if (foodData == null)
+            {
+                Debug.LogError($"[OrderTray] Không tìm thấy FoodItemData cho foodID={orderData.FoodID}");
+            }
+            else
+            {
+                // Spawn food icon tại tất cả 3 slots ngay — icon đi cùng tray khi slide in
+                foreach (var slot in slots)
+                    slot.ShowFoodIcon(foodData);
+            }
+
+            // Slide-in animation
             if (enterFromTop)
             {
                 _rectTransform.anchoredPosition = homePos + new Vector2(0f, 250f);
@@ -92,22 +107,13 @@ namespace FoodMatch.Order
             }
         }
 
-        /// <summary>
-        /// Dời khay sang vị trí mới (khi order bên cạnh rời đi).
-        /// </summary>
         public void MoveTo(Vector2 newHomePos, float duration = 0.35f)
         {
             _homeAnchoredPos = newHomePos;
-            _rectTransform
-                .DOAnchorPos(newHomePos, duration)
-                .SetEase(Ease.OutCubic)
-                .SetUpdate(true);
+            _rectTransform.DOAnchorPos(newHomePos, duration)
+                .SetEase(Ease.OutCubic).SetUpdate(true);
         }
 
-        /// <summary>
-        /// Kiểm tra order này có nhận foodID không.
-        /// Trả về index slot tiếp theo, hoặc -1 nếu không match.
-        /// </summary>
         public bool TryMatch(int foodID, out int slotIndex)
         {
             slotIndex = -1;
@@ -119,45 +125,28 @@ namespace FoodMatch.Order
             return true;
         }
 
-        /// <summary>
-        /// Lấy WorldPosition của slot tiếp theo — đích bay cho FoodItem.
-        /// </summary>
         public Vector3 GetNextSlotWorldPosition()
         {
             int next = OrderData?.DeliveredCount ?? 0;
-            return next < slots.Count
-                ? slots[next].WorldPosition
-                : transform.position;
+            return next < slots.Count ? slots[next].WorldPosition : transform.position;
         }
 
-        /// <summary>
-        /// Lấy scale đích mà food phải DOScale về khi đến slot.
-        /// </summary>
         public Vector3 GetNextSlotFoodScale()
         {
             int next = OrderData?.DeliveredCount ?? 0;
-            return next < slots.Count
-                ? slots[next].FoodTargetScale
-                : Vector3.one * 0.4f;
+            return next < slots.Count ? slots[next].FoodTargetScale : Vector3.one * 0.4f;
         }
 
-        /// <summary>
-        /// Xác nhận giao món thành công.
-        /// GỌI TRONG OnComplete callback của DOTween food animation.
-        /// </summary>
         public void ConfirmDelivery(int slotIndex)
         {
             if (slotIndex < 0 || slotIndex >= slots.Count) return;
 
             OrderData.Deliver();
             slots[slotIndex].PlayReceiveAnimation();
-            slots[slotIndex].MarkDelivered();
+            slots[slotIndex].MarkDelivered(); // ẩn icon + hiện checkmark
 
             if (OrderData.IsCompleted)
-            {
-                DOVirtual.DelayedCall(0.35f,
-                    () => ChangeState(OrderState.Completed), false);
-            }
+                DOVirtual.DelayedCall(0.35f, () => ChangeState(OrderState.Completed), false);
         }
 
         // ─── State Machine ────────────────────────────────────────────────────
@@ -175,7 +164,6 @@ namespace FoodMatch.Order
 
         private void OnEnterActive()
         {
-            // Idle bounce nhẹ lên xuống
             _rectTransform.DOKill();
             _rectTransform
                 .DOAnchorPosY(_homeAnchoredPos.y + 5f, 0.9f)
@@ -187,22 +175,14 @@ namespace FoodMatch.Order
         private void OnEnterCompleted()
         {
             _rectTransform.DOKill();
-
-            // Đổi màu nền sang xanh lá
             trayBgImage?.DOColor(completedBgColor, 0.2f).SetUpdate(true);
-
-            // Bounce ăn mừng
-            transform
-                .DOPunchScale(Vector3.one * 0.2f, 0.45f, 7, 0.5f)
-                .SetUpdate(true);
-
+            transform.DOPunchScale(Vector3.one * 0.2f, 0.45f, 7, 0.5f).SetUpdate(true);
             completionVFXRoot?.SetActive(true);
 
             OnCompleted?.Invoke(this);
             EventBus.RaiseOrderCompleted(TrayIndex);
 
-            DOVirtual.DelayedCall(0.7f,
-                () => ChangeState(OrderState.Leaving), false);
+            DOVirtual.DelayedCall(0.7f, () => ChangeState(OrderState.Leaving), false);
         }
 
         private void OnEnterLeaving()

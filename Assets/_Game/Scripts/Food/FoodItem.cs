@@ -18,6 +18,8 @@ namespace FoodMatch.Food
         public int FoodID => Data != null ? Data.foodID : -1;
         public int LayerIndex { get; private set; } = 0;
         public TraySlot OwnerSlot { get; set; }
+        public Transform AnchorRef { get; private set; }
+        public FoodMatch.Tray.FoodTray OwnerTray { get; set; }
 
         // Lưu màu gốc để restore lại khi lên layer 0
         private Color _originalColor;
@@ -134,5 +136,6 @@ namespace FoodMatch.Food
 
             transform.DOPunchPosition(randomDir * 0.15f, 0.35f, 5, 0.5f);
         }
+        public void SetAnchorRef(Transform anchor) => AnchorRef = anchor;
     }
 }

@@ -7,11 +7,7 @@ using FoodMatch.Tray;
 namespace FoodMatch.Level
 {
     /// <summary>
-    /// Điều phối toàn bộ vòng đời 1 level:
-    ///   1. Nhận lệnh load từ GameManager
-    ///   2. Đọc LevelConfig từ LevelDatabase
-    ///   3. Khởi tạo OrderQueue, BackupTray, FoodGridSpawner
-    ///   4. Lắng nghe Win/Lose từ LevelProgressTracker
+    /// Điều phối toàn bộ vòng đời 1 level.
     /// Gắn vào GameObject "LevelManager" trong Scene Game.
     /// </summary>
     public class LevelManager : MonoBehaviour
@@ -25,11 +21,16 @@ namespace FoodMatch.Level
         [Header("─── Systems ─────────────────────────")]
         [SerializeField] private OrderQueue orderQueue;
         [SerializeField] private BackupTray backupTray;
-        [SerializeField] private FoodGridSpawner foodGridSpawner;   // ← bỏ comment
         [SerializeField] private LevelProgressTracker progressTracker;
 
         [Header("─── Spawners ────────────────────────")]
         [SerializeField] private BackupTraySpawner backupTraySpawner;
+
+        [Tooltip("Tạo hình khối polygon 3D — KHÔNG đụng vào.")]
+        [SerializeField] private FoodGridSpawner foodGridSpawner;
+
+        [Tooltip("Spawn food vào các anchor positions trong FoodTray — chạy SAU foodGridSpawner.")]
+        [SerializeField] private FoodTraySpawner foodTraySpawner;
 
         // ─── Runtime ──────────────────────────────────────────────────────────
         public LevelConfig CurrentConfig { get; private set; }
@@ -44,8 +45,6 @@ namespace FoodMatch.Level
 
         private void OnEnable() => GameManager.OnGameStateChanged += HandleGameStateChanged;
         private void OnDisable() => GameManager.OnGameStateChanged -= HandleGameStateChanged;
-
-        // ─── Game State Handler ───────────────────────────────────────────────
 
         private void HandleGameStateChanged(GameState state)
         {
@@ -74,7 +73,6 @@ namespace FoodMatch.Level
 
         private void LoadLevel(int levelIndex)
         {
-            // 1. Lấy config
             var config = levelDatabase.GetLevel(levelIndex);
             if (config == null || !config.IsValid())
             {
@@ -85,18 +83,15 @@ namespace FoodMatch.Level
             CurrentConfig = config;
             Debug.Log($"[LevelManager] Load Level {levelIndex}: {config.GetDisplayName()}");
 
-            // 2. Reset hệ thống cũ
             ResetAllSystems();
 
-            // 3. Khởi tạo theo thứ tự phụ thuộc
             InitBackupTray(config);
-            InitFoodGrid(config);        // ← spawn grid ngay tại đây
+            InitFoodGrid(config);       // ← FoodGridSpawner: tạo hình khối
+            InitFoodTraySpawner(config); // ← FoodTraySpawner: nhét food vào anchor
             InitOrderQueue(config);
             InitProgressTracker(config);
 
-            // 4. Chuyển sang Play — UIManager sẽ hiện panelGame
             GameManager.Instance.ChangeState(GameState.Play);
-
             Debug.Log($"[LevelManager] Level {levelIndex} sẵn sàng!");
         }
 
@@ -105,7 +100,6 @@ namespace FoodMatch.Level
         private void InitBackupTray(LevelConfig config)
         {
             if (backupTray == null) { Debug.LogWarning("[LevelManager] BackupTray chưa gán!"); return; }
-
             if (backupTraySpawner != null)
                 backupTraySpawner.SpawnSlots(config.backupTrayCapacity);
             else
@@ -114,12 +108,14 @@ namespace FoodMatch.Level
 
         private void InitFoodGrid(LevelConfig config)
         {
-            if (foodGridSpawner == null)
-            {
-                Debug.LogWarning("[LevelManager] FoodGridSpawner chưa gán!");
-                return;
-            }
+            if (foodGridSpawner == null) { Debug.LogWarning("[LevelManager] FoodGridSpawner chưa gán!"); return; }
             foodGridSpawner.SpawnGrid(config);
+        }
+
+        private void InitFoodTraySpawner(LevelConfig config)
+        {
+            if (foodTraySpawner == null) { Debug.LogWarning("[LevelManager] FoodTraySpawner chưa gán!"); return; }
+            foodTraySpawner.SpawnFood(config);
         }
 
         private void InitOrderQueue(LevelConfig config)
@@ -138,7 +134,8 @@ namespace FoodMatch.Level
         {
             orderQueue?.Reset();
             backupTray?.ResetTray(5);
-            foodGridSpawner?.ClearGrid();   // ← clear grid cũ trước khi spawn mới
+            foodGridSpawner?.ClearGrid();    // ← xóa hình khối cũ
+            foodTraySpawner?.ClearFood();    // ← xóa food cũ trong các tray
         }
 
         // ─── Debug ────────────────────────────────────────────────────────────

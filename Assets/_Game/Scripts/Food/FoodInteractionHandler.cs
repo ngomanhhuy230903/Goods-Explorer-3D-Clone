@@ -9,31 +9,31 @@ namespace FoodMatch.Food
     [RequireComponent(typeof(FoodItem))]
     public class FoodInteractionHandler : MonoBehaviour
     {
-        private FoodItem _foodItem;
-        private FoodTray _tray;
+        //private FoodItem _foodItem;
+        //private FoodTray _tray;
 
-        private void Awake()
-        {
-            _foodItem = GetComponent<FoodItem>();
-        }
+        //private void Awake()
+        //{
+        //    _foodItem = GetComponent<FoodItem>();
+        //}
 
-        public void SetTray(FoodTray tray)
-        {
-            _tray = tray;
-        }
+        //public void SetTray(FoodTray tray)
+        //{
+        //    _tray = tray;
+        //}
 
-        // Unity tự gọi khi click/touch vào Collider 3D
-        private void OnMouseDown()
-        {
-            if (_tray == null) return;
+        //// Unity tự gọi khi click/touch vào Collider 3D
+        //private void OnMouseDown()
+        //{
+        //    if (_tray == null) return;
 
-            FoodItem selected = _tray.TrySelectItem(_foodItem);
+        //    FoodItem selected = _tray.TrySelectItem(_foodItem);
 
-            if (selected != null)
-            {
-                Debug.Log($"[Interaction] Selected: {selected.Data?.foodName}");
-                // Day 4: EventBus.OnItemSelected?.Invoke(selected);
-            }
-        }
+        //    if (selected != null)
+        //    {
+        //        Debug.Log($"[Interaction] Selected: {selected.Data?.foodName}");
+        //        // Day 4: EventBus.OnItemSelected?.Invoke(selected);
+        //    }
+        //}
     }
 }
