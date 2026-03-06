@@ -14,6 +14,7 @@ GameObject:
   - component: {fileID: 4857098505297871242}
   - component: {fileID: 2665505416776165083}
   - component: {fileID: -716183569071760054}
+  - component: {fileID: -2210070039479030834}
   m_Layer: 0
   m_Name: Food_Carrot
   m_TagString: Untagged
@@ -132,3 +133,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3bd715b0a7bccce43ada2c6096594f03, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &-2210070039479030834
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4797751799249303859}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 021652a7f31fb784291a0c9bf76ff317, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  targetSlot: {fileID: 0}

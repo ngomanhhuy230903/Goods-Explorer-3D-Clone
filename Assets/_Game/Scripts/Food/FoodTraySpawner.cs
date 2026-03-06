@@ -6,12 +6,13 @@ namespace FoodMatch.Tray
 {
     /// <summary>
     /// Gắn cùng GameObject với FoodGridSpawner.
-    /// Đăng ký OnSpawnComplete — được invoke SAU KHI animation cell xong
-    /// → lúc đó anchor.position đã đúng → SpawnFoods chạy bình thường.
+    ///
+    /// Đăng ký OnSpawnComplete — được invoke SAU KHI animation cell CUỐI CÙNG xong
+    /// → lúc đó tất cả anchor.position đã đúng → SpawnFoods chạy bình thường.
     /// </summary>
     public class FoodTraySpawner : MonoBehaviour
     {
-        [Header("─── Spawn Animation ─────────────────")]
+        [Header("─── Spawn Animation ─────────────────────")]
         [SerializeField] private float trayStaggerDelay = 0.06f;
 
         [Header("─── Debug ───────────────────────────")]
@@ -55,7 +56,15 @@ namespace FoodMatch.Tray
             _gridSpawner.OnSpawnComplete -= OnGridSpawnComplete;
             if (_pendingConfig == null) return;
 
-            // Lúc này cell đã scale xong → anchor.position đúng
+            // neutralContainer do FoodGridSpawner tạo runtime, scale luôn (1,1,1)
+            Transform neutralContainer = _gridSpawner.GetNeutralContainer();
+            if (neutralContainer == null)
+            {
+                Debug.LogError("[FoodTraySpawner] GetNeutralContainer() trả về null!");
+                return;
+            }
+
+            // Lúc này tất cả cell đã scale xong → anchor.position đúng
             _trays.Clear();
             _trays.AddRange(
                 _gridSpawner.GetCellContainer().GetComponentsInChildren<FoodTray>());
@@ -68,7 +77,6 @@ namespace FoodMatch.Tray
 
             Log($"Tìm thấy {_trays.Count} FoodTray.");
 
-            Transform cellContainer = _gridSpawner.GetCellContainer();
             List<FoodItemData> foodList = GenerateFoodList(_pendingConfig);
             var distribution = DistributeToTrays(foodList);
 
@@ -77,7 +85,7 @@ namespace FoodMatch.Tray
                 _trays[i].SpawnFoods(
                     distribution[i],
                     trayID: i,
-                    cellContainer: cellContainer,
+                    neutralContainer: neutralContainer,
                     globalDelay: i * trayStaggerDelay);
 
                 Log($"Tray[{i}] → {distribution[i].Count} foods");
@@ -117,7 +125,6 @@ namespace FoodMatch.Tray
 
             int foodIdx = 0, remaining = foodList.Count;
 
-            // Bước A: tối thiểu 2 food/tray
             for (int i = 0; i < trayCount && remaining > 0; i++)
             {
                 int give = Mathf.Min(2, remaining);
@@ -126,7 +133,6 @@ namespace FoodMatch.Tray
                 remaining -= give;
             }
 
-            // Bước B: phần còn lại ngẫu nhiên
             while (remaining > 0)
             {
                 var available = new List<int>();

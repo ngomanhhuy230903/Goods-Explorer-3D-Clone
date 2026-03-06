@@ -68,9 +68,18 @@ namespace FoodMatch.Tray
         // ─── Runtime ──────────────────────────────────────────────────────────
 
         private readonly List<List<Transform>> _grid = new();
+
+        /// <summary>
+        /// Invoke SAU KHI animation của cell CUỐI CÙNG hoàn tất.
+        /// Lúc này tất cả anchor đã đúng vị trí world → an toàn để spawn food.
+        /// </summary>
         public System.Action OnSpawnComplete;
+
         public int Columns { get; private set; }
         public int Rows { get; private set; }
+
+        // neutralContainer: chứa Food, scale luôn (1,1,1), tạo runtime
+        private Transform _neutralContainer;
 
         // Auto-rotate state
         private float _idleTimer = 0f;
@@ -88,12 +97,25 @@ namespace FoodMatch.Tray
             Columns = Mathf.Max(3, config.trayColumns);
             Rows = Mathf.Max(1, config.trayRows);
 
+            // ── CellContainer ──────────────────────────────────────────────
             if (cellContainer == null)
             {
                 var go = new GameObject("CellContainer");
                 go.transform.SetParent(transform, false);
                 cellContainer = go.transform;
             }
+
+            // ── NeutralContainer (sibling của CellContainer) ───────────────
+            // Tạo mới mỗi lần SpawnGrid để đảm bảo sạch
+            if (_neutralContainer != null)
+                Destroy(_neutralContainer.gameObject);
+
+            var ncGO = new GameObject("FoodContainer");
+            ncGO.transform.SetParent(transform, false);      // cùng cha với CellContainer
+            ncGO.transform.localPosition = Vector3.zero;
+            ncGO.transform.localRotation = Quaternion.identity;
+            ncGO.transform.localScale = Vector3.one;      // ← cứng, không thay đổi
+            _neutralContainer = ncGO.transform;
 
             ResetIdleTimer();
             StartCoroutine(SpawnAfterLayout());
@@ -103,10 +125,18 @@ namespace FoodMatch.Tray
         {
             StopAllCoroutines();
             StopAutoRotate(instant: true);
+
             foreach (var row in _grid)
                 foreach (var cell in row)
                     if (cell != null) Destroy(cell.gameObject);
             _grid.Clear();
+
+            // Dọn food trong neutralContainer
+            if (_neutralContainer != null)
+            {
+                foreach (Transform child in _neutralContainer)
+                    Destroy(child.gameObject);
+            }
         }
 
         // ─── Update ───────────────────────────────────────────────────────────
@@ -126,10 +156,6 @@ namespace FoodMatch.Tray
 
         // ─── Public: Gọi khi player tương tác ────────────────────────────────
 
-        /// <summary>
-        /// Gọi bất cứ khi nào player tương tác (click, drag, chọn food...)
-        /// để reset bộ đếm idle và dừng xoay tự động.
-        /// </summary>
         public void NotifyInteraction()
         {
             ResetIdleTimer();
@@ -149,9 +175,6 @@ namespace FoodMatch.Tray
                 .To(() => _currentRotSpeed, v => _currentRotSpeed = v,
                     autoRotateSpeed, rotateEaseInDuration)
                 .SetEase(Ease.InSine);
-
-            //if (verboseLog)
-            //    Debug.Log("[FoodGridSpawner] Idle → bắt đầu xoay tự động.");
         }
 
         private void StopAutoRotate(bool instant)
@@ -190,9 +213,6 @@ namespace FoodMatch.Tray
 
             // ════════════════════════════════════════════════════════════════
             // BƯỚC 1: Đặt container
-            //   - XY  → tâm MainTrayArea
-            //   - Z   → containerPositionZ (chỉnh ngoài editor)
-            //   - Scale → LUÔN = 1, không chạm vào
             // ════════════════════════════════════════════════════════════════
             Vector3[] corners = new Vector3[4];
             mainTrayArea.GetWorldCorners(corners);
@@ -202,12 +222,10 @@ namespace FoodMatch.Tray
 
             cellContainer.position = worldCenter;
             cellContainer.rotation = Quaternion.identity;
-            cellContainer.localScale = Vector3.one; // ← cứng, không thay đổi
+            cellContainer.localScale = Vector3.one;
 
             // ════════════════════════════════════════════════════════════════
-            // BƯỚC 2: Tính hệ số nhân scaleX
-            //   - Chỉ trục X thay đổi để mép đáy khít nhau
-            //   - Y và Z giữ nguyên scale gốc của prefab hoàn toàn
+            // BƯỚC 2: Tính scaleX
             // ════════════════════════════════════════════════════════════════
             float angleStep = 360f / Columns;
             float halfAngleRad = (angleStep * 0.5f) * Mathf.Deg2Rad;
@@ -216,12 +234,10 @@ namespace FoodMatch.Tray
             float finalScaleXMul = scaleXRatio * debugScaleXMultiplier;
 
             Vector3 prefabOriginalScale = cellPrefab.transform.localScale;
-
-            // Scale target: chỉ X thay đổi, Y và Z = gốc
             Vector3 targetCellScale = new Vector3(
-                prefabOriginalScale.x * finalScaleXMul, // ← multiply X
-                prefabOriginalScale.y,                   // ← giữ nguyên
-                prefabOriginalScale.z);                  // ← giữ nguyên
+                prefabOriginalScale.x * finalScaleXMul,
+                prefabOriginalScale.y,
+                prefabOriginalScale.z);
 
             // ════════════════════════════════════════════════════════════════
             // BƯỚC 3: Tính rowHeight
@@ -232,9 +248,15 @@ namespace FoodMatch.Tray
                               : measuredH + rowGap;
 
             // ════════════════════════════════════════════════════════════════
-            // BƯỚC 4: Spawn
+            // BƯỚC 4: Spawn + tính tổng thời gian animation
             // ════════════════════════════════════════════════════════════════
+            int totalCells = Rows * Columns;
             int spawnOrder = 0;
+
+            // Thời gian animation của cell cuối cùng kết thúc lúc:
+            // delay_cuối + spawnDuration
+            float lastDelay = (totalCells - 1) * staggerDelay;
+            float totalAnimTime = lastDelay + spawnDuration;
 
             for (int row = 0; row < Rows; row++)
             {
@@ -254,10 +276,6 @@ namespace FoodMatch.Tray
                     Vector3 origEuler = cellPrefab.transform.eulerAngles;
                     t.localEulerAngles = new Vector3(origEuler.x, rotY, origEuler.z);
 
-                    // Chỉ multiply X, Y và Z không đổi
-                    t.localScale = targetCellScale;
-
-                    // Animate scale từ 0 → target
                     t.localScale = Vector3.zero;
                     float delay = spawnOrder * staggerDelay;
                     DOTween.Sequence()
@@ -269,44 +287,18 @@ namespace FoodMatch.Tray
                 }
 
                 _grid.Add(rowList);
-                OnSpawnComplete?.Invoke();
             }
 
             // ════════════════════════════════════════════════════════════════
-            // DEBUG LOG
+            // BƯỚC 5: Chờ animation CUỐI CÙNG xong → invoke OnSpawnComplete
+            // (trước đây invoke ngay trong vòng lặp row → quá sớm)
             // ════════════════════════════════════════════════════════════════
-            //if (verboseLog)
-            //{
-            //    Debug.Log($"[FoodGridSpawner] ══════════════════════════════════════════");
-            //    Debug.Log($"[FoodGridSpawner] {Columns} cột × {Rows} hàng");
-            //    Debug.Log($"[FoodGridSpawner] ── Container ────────────────────────────");
-            //    Debug.Log($"[FoodGridSpawner]   position (world)     = {cellContainer.position}");
-            //    Debug.Log($"[FoodGridSpawner]   containerPositionZ   = {containerPositionZ:F3}");
-            //    Debug.Log($"[FoodGridSpawner]   scale                = {cellContainer.localScale}  ✓ = (1,1,1)");
-            //    Debug.Log($"[FoodGridSpawner] ── Scale X (NHÂN) ──────────────────────");
-            //    Debug.Log($"[FoodGridSpawner]   prefabOriginalScale  = {prefabOriginalScale}");
-            //    Debug.Log($"[FoodGridSpawner]   idealBaseWidth       = {idealBaseWidth:F4}");
-            //    Debug.Log($"[FoodGridSpawner]   scaleXRatio          = {scaleXRatio:F4}");
-            //    Debug.Log($"[FoodGridSpawner]   debugScaleXMultiplier= {debugScaleXMultiplier:F4}" +
-            //               (Mathf.Approximately(debugScaleXMultiplier, 1f) ? "" : "  ⚠️ Override!"));
-            //    Debug.Log($"[FoodGridSpawner]   finalScaleXMul       = {finalScaleXMul:F4}");
-            //    Debug.Log($"[FoodGridSpawner]   targetCellScale      = {targetCellScale}");
-            //    Debug.Log($"[FoodGridSpawner] ── Row Height ───────────────────────────");
-            //    Debug.Log($"[FoodGridSpawner]   measuredHeightY      = {measuredH:F4}");
-            //    Debug.Log($"[FoodGridSpawner]   rowGap               = {rowGap:F4}");
-            //    Debug.Log($"[FoodGridSpawner]   rowHeight            = {rowHeight:F4}");
-            //    Debug.Log($"[FoodGridSpawner]   totalHeight          = {rowHeight * Rows:F4}");
+            yield return new WaitForSeconds(totalAnimTime);
 
-            //    for (int r = 0; r < Rows; r++)
-            //        Debug.Log($"[FoodGridSpawner]   row {r}  localY = {(baseY + r * rowHeight):F4}");
+            if (verboseLog)
+                Debug.Log($"[FoodGridSpawner] Tất cả {totalCells} cell đã scale xong → invoke OnSpawnComplete.");
 
-            //    Debug.Log($"[FoodGridSpawner] ── Idle Rotate ──────────────────────────");
-            //    Debug.Log($"[FoodGridSpawner]   idleDelay            = {idleTimeBeforeRotate:F1}s");
-            //    Debug.Log($"[FoodGridSpawner]   autoRotateSpeed      = {autoRotateSpeed:F1}°/s");
-            //    Debug.Log($"[FoodGridSpawner]   easeIn               = {rotateEaseInDuration:F2}s");
-            //    Debug.Log($"[FoodGridSpawner]   easeOut              = {rotateEaseOutDuration:F2}s");
-            //    Debug.Log($"[FoodGridSpawner] ══════════════════════════════════════════");
-            //}
+            OnSpawnComplete?.Invoke();
         }
 
         // ─── Đo chiều cao Y thực ─────────────────────────────────────────────
@@ -332,7 +324,10 @@ namespace FoodMatch.Tray
         }
 
         // ─── Public Getters ───────────────────────────────────────────────────
+
         public Transform GetCellContainer() => cellContainer;
+        public Transform GetNeutralContainer() => _neutralContainer;
+
         public Vector3 GetCellWorldPosition(int row, int col)
         {
             if (row < 0 || row >= _grid.Count) return Vector3.zero;
@@ -358,100 +353,5 @@ namespace FoodMatch.Tray
             if (mainTrayArea == null) { Debug.LogError("[FoodGridSpawner] mainTrayArea chưa gán!"); return false; }
             return true;
         }
-
-        // ─── Gizmos ───────────────────────────────────────────────────────────
-//#if UNITY_EDITOR
-//        [Header("─── Editor Preview ──────────────────")]
-//        [SerializeField] private int previewColumns = 4;
-//        [SerializeField] private int previewRows = 2;
-
-//        private void OnDrawGizmosSelected()
-//        {
-//            if (mainTrayArea == null) return;
-
-//            Vector3[] corners = new Vector3[4];
-//            mainTrayArea.GetWorldCorners(corners);
-//            Vector3 center = (corners[0] + corners[2]) * 0.5f;
-//            center.z = containerPositionZ;
-
-//            int cols = Mathf.Max(3, previewColumns);
-//            int rows = Mathf.Max(1, previewRows);
-
-//            float worldD = prefabDepth; // container scale = 1, không nhân gì thêm
-//            float angleStep = 360f / cols;
-
-//            float halfAngleRad = (180f / cols) * Mathf.Deg2Rad;
-//            float idealBaseWorld = 2f * worldD * Mathf.Tan(halfAngleRad);
-
-//            float localH = (prefabHeightY > 0f ? prefabHeightY : prefabDepth);
-//            float localRowH = (debugRowHeightOverride > 0f)
-//                              ? debugRowHeightOverride
-//                              : localH + rowGap;
-
-//            for (int row = 0; row < rows; row++)
-//            {
-//                float yPos = baseY + row * localRowH;
-//                Vector3 rowCtr = center + Vector3.up * yPos;
-
-//                Gizmos.color = Color.cyan;
-//                DrawPolygon(rowCtr, worldD, cols, angleStep);
-
-//                Gizmos.color = Color.green;
-//                for (int col = 0; col < cols; col++)
-//                {
-//                    float rad = col * angleStep * Mathf.Deg2Rad;
-//                    Vector3 dir = new Vector3(Mathf.Sin(rad), 0f, Mathf.Cos(rad));
-//                    Gizmos.DrawSphere(rowCtr, worldD * 0.025f);
-//                    Gizmos.DrawLine(rowCtr, rowCtr + dir * worldD);
-//                }
-
-//                Gizmos.color = Color.yellow;
-//                for (int col = 0; col < cols; col++)
-//                {
-//                    float rad = (col * angleStep + angleStep * 0.5f) * Mathf.Deg2Rad;
-//                    Vector3 dir = new Vector3(Mathf.Sin(rad), 0f, Mathf.Cos(rad));
-//                    Gizmos.DrawLine(rowCtr, rowCtr + dir * worldD);
-//                }
-
-//                UnityEditor.Handles.color = Color.white;
-//                UnityEditor.Handles.Label(
-//                    rowCtr + Vector3.right * worldD * 1.15f,
-//                    $"Row {row} | Y={yPos:F2}\nrowH={localRowH:F2} | BaseW={idealBaseWorld:F2}");
-//            }
-
-//            // Z marker
-//            Gizmos.color = new Color(0f, 1f, 1f, 0.4f);
-//            Gizmos.DrawLine(center - Vector3.forward * worldD * 0.3f,
-//                            center + Vector3.forward * worldD * 0.3f);
-
-//            // Khung MainTrayArea
-//            Gizmos.color = Color.green;
-//            Gizmos.DrawLine(corners[0], corners[1]);
-//            Gizmos.DrawLine(corners[1], corners[2]);
-//            Gizmos.DrawLine(corners[2], corners[3]);
-//            Gizmos.DrawLine(corners[3], corners[0]);
-
-//            float scaleXR = (prefabBaseWidth > 0f) ? idealBaseWorld / prefabBaseWidth : 1f;
-//            UnityEditor.Handles.color = Color.cyan;
-//            UnityEditor.Handles.Label(
-//                center + Vector3.up * (localRowH * rows + worldD * 0.5f),
-//                $"container scale = (1,1,1) ✓\n" +
-//                $"scaleXRatio={scaleXR:F3} × mul={debugScaleXMultiplier:F2}\n" +
-//                $"Z={containerPositionZ:F2} | rowH={localRowH:F3} gap={rowGap:F3}\n" +
-//                $"idle={idleTimeBeforeRotate:F1}s → {autoRotateSpeed:F1}°/s");
-//        }
-
-//        private void DrawPolygon(Vector3 center, float radius, int sides, float step)
-//        {
-//            for (int i = 0; i < sides; i++)
-//            {
-//                float a0 = ((i - 0.5f) * step) * Mathf.Deg2Rad;
-//                float a1 = ((i + 0.5f) * step) * Mathf.Deg2Rad;
-//                Vector3 p0 = center + new Vector3(Mathf.Sin(a0), 0f, Mathf.Cos(a0)) * radius;
-//                Vector3 p1 = center + new Vector3(Mathf.Sin(a1), 0f, Mathf.Cos(a1)) * radius;
-//                Gizmos.DrawLine(p0, p1);
-//            }
-//        }
-//#endif
     }
 }

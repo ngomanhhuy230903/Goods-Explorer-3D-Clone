@@ -14,6 +14,7 @@ GameObject:
   - component: {fileID: 7799354975169900511}
   - component: {fileID: 5299822814945987527}
   - component: {fileID: -6353386462627969075}
+  - component: {fileID: 5482748903252345035}
   m_Layer: 0
   m_Name: Food_Apple
   m_TagString: Untagged
@@ -122,9 +123,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   meshRenderer: {fileID: 6944992681310531228}
-  normalMaterial: {fileID: 0}
-  greyedMaterial: {fileID: 0}
-  shadowOverlay: {fileID: 0}
 --- !u!114 &-6353386462627969075
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -137,3 +135,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3bd715b0a7bccce43ada2c6096594f03, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &5482748903252345035
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8890508618791391049}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 021652a7f31fb784291a0c9bf76ff317, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  targetSlot: {fileID: 0}

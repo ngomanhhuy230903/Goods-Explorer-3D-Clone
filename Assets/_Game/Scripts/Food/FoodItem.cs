@@ -24,12 +24,12 @@ namespace FoodMatch.Food
         // Lưu màu gốc để restore lại khi lên layer 0
         private Color _originalColor;
         private Collider _collider;
-
+        private Vector3 _originalScale;
         // ─────────────────────────────────────────────────────────────────────
         private void Awake()
         {
             _collider = GetComponent<Collider>();
-
+            _originalScale = transform.localScale;
             // Tự tìm MeshRenderer nếu chưa gán
             if (meshRenderer == null)
                 meshRenderer = GetComponentInChildren<MeshRenderer>();
@@ -83,7 +83,7 @@ namespace FoodMatch.Food
         private void ApplyActiveState()
         {
             gameObject.SetActive(true);
-            transform.localScale = Data?.normalScale ?? Vector3.one;
+           // transform.localScale = Data?.normalScale ?? Vector3.one;
 
             // Restore màu gốc
             RestoreOriginalColor();
@@ -95,7 +95,7 @@ namespace FoodMatch.Food
         private void ApplyGreyedState()
         {
             gameObject.SetActive(true);
-            transform.localScale = Data?.greyedScale ?? new Vector3(0.8f, 0.8f, 0.8f);
+            transform.localScale = _originalScale * 0.8f;
 
             // Chỉ tint xám màu material hiện tại, không đổi material
             if (meshRenderer != null)
