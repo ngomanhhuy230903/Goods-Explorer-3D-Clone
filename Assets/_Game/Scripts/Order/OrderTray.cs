@@ -66,6 +66,7 @@ namespace FoodMatch.Order
 
         /// <summary>
         /// Khởi tạo tray: lookup FoodItemData → spawn icon 3D tại tất cả slots → slide in.
+        /// Scale của từng icon được quản lý độc lập bởi mỗi OrderSlotUI (Inspector của slot).
         /// </summary>
         public void Initialize(OrderData orderData, int trayIndex,
                                Vector2 homePos, bool enterFromTop = true)
@@ -74,7 +75,6 @@ namespace FoodMatch.Order
             TrayIndex = trayIndex;
             _homeAnchoredPos = homePos;
 
-            // Lookup FoodItemData từ Database rồi truyền thẳng xuống slot
             var foodData = foodDatabase != null
                 ? foodDatabase.GetFoodByID(orderData.FoodID)
                 : null;
@@ -85,12 +85,11 @@ namespace FoodMatch.Order
             }
             else
             {
-                // Spawn food icon tại tất cả 3 slots ngay — icon đi cùng tray khi slide in
+                // Mỗi slot tự quản lý foodIconScale của nó qua Inspector
                 foreach (var slot in slots)
                     slot.ShowFoodIcon(foodData);
             }
 
-            // Slide-in animation
             if (enterFromTop)
             {
                 _rectTransform.anchoredPosition = homePos + new Vector2(0f, 250f);
@@ -134,7 +133,8 @@ namespace FoodMatch.Order
         public Vector3 GetNextSlotFoodScale()
         {
             int next = OrderData?.DeliveredCount ?? 0;
-            return next < slots.Count ? slots[next].FoodTargetScale : Vector3.one * 0.4f;
+            // Lấy FoodTargetScale từ slot tương ứng — mỗi slot có thể có scale riêng
+            return next < slots.Count ? slots[next].FoodTargetScale : Vector3.one;
         }
 
         public void ConfirmDelivery(int slotIndex)
@@ -143,7 +143,7 @@ namespace FoodMatch.Order
 
             OrderData.Deliver();
             slots[slotIndex].PlayReceiveAnimation();
-            slots[slotIndex].MarkDelivered(); // ẩn icon + hiện checkmark
+            slots[slotIndex].MarkDelivered();
 
             if (OrderData.IsCompleted)
                 DOVirtual.DelayedCall(0.35f, () => ChangeState(OrderState.Completed), false);

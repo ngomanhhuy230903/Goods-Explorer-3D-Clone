@@ -21,11 +21,11 @@ namespace FoodMatch.Tray
         [Tooltip("Prefab đại diện cho 1 ô trong khay thừa (3D Transform anchor).")]
         [SerializeField] private GameObject slotAnchorPrefab;
 
-        [Header("─── Layout (World Space) ────────────")]
-        [Tooltip("Khoảng cách giữa các slot theo trục X (world units).")]
+        [Header("─── Layout (Local Space) ────────────")]
+        [Tooltip("Khoảng cách giữa các slot theo trục X (local units).")]
         [SerializeField] private float slotSpacingX = 150f;
 
-        [Tooltip("Offset Y so với pivot của BackupTray.")]
+        [Tooltip("Offset Y so với pivot của SlotAnchors_Container.")]
         [SerializeField] private float slotOffsetY = 0f;
 
         [Header("─── Pool Config ──────────────────────")]
@@ -47,8 +47,13 @@ namespace FoodMatch.Tray
 
             // Container con giữ hierarchy gọn
             var go = new GameObject("SlotAnchors_Container");
-            go.transform.SetParent(transform);
+
+            // FIX: worldPositionStays = false để không kế thừa world scale của Canvas
+            go.transform.SetParent(transform, false);
             go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.identity;
+            go.transform.localScale = Vector3.one; // ← Reset tường minh tránh Canvas scale
+
             _slotContainer = go.transform;
 
             // Dùng ObjectPool của dự án
@@ -64,7 +69,6 @@ namespace FoodMatch.Tray
         public void SpawnSlots(int capacity)
         {
             ClearAllSlots();
-
             capacity = Mathf.Clamp(capacity, 1, 10);
 
             for (int i = 0; i < capacity; i++)
@@ -84,18 +88,18 @@ namespace FoodMatch.Tray
 
         /// <summary>
         /// Thêm 1 slot mới (Booster +1 Khay).
-        /// Các slot cũ DOMove sang trái, slot mới scale từ 0 → 1.
+        /// Các slot cũ DOLocalMove sang trái, slot mới scale từ 0 → 1.
         /// </summary>
         public void AddExtraSlot()
         {
             int newTotal = _activeSlotAnchors.Count + 1;
 
-            // Dịch chuyển slot cũ sang vị trí mới
+            // FIX: Dùng DOLocalMove thay DOMove để đúng trong UI local space
             for (int i = 0; i < _activeSlotAnchors.Count; i++)
             {
-                Vector3 targetPos = CalculateSlotWorldPos(i, newTotal);
+                Vector3 targetLocalPos = CalculateSlotLocalPos(i, newTotal);
                 _activeSlotAnchors[i].transform
-                    .DOMove(targetPos, 0.25f)
+                    .DOLocalMove(targetLocalPos, 0.25f)
                     .SetEase(Ease.OutCubic);
             }
 
@@ -112,15 +116,21 @@ namespace FoodMatch.Tray
         }
 
         // ─── Spawn / Pool Logic ───────────────────────────────────────────────
-
         private GameObject SpawnOneSlot(int index, int totalCount, bool animate)
         {
-            Vector3 worldPos = CalculateSlotWorldPos(index, totalCount);
+            // FIX: Lấy từ pool tại origin, KHÔNG set world position trước
+            var anchor = _slotPool.Get(Vector3.zero);
 
-            // Lấy từ ObjectPool (Get đặt position và SetActive(true))
-            var anchor = _slotPool.Get(worldPos);
-            anchor.transform.SetParent(_slotContainer);
+            // FIX: SetParent với worldPositionStays = false → giữ local space, tránh Canvas scale
+            anchor.transform.SetParent(_slotContainer, false);
+
+            // FIX: Reset scale sau SetParent (phòng trường hợp pool object bị dirty scale)
+            anchor.transform.localScale = Vector3.one;
+            anchor.transform.localRotation = Quaternion.identity;
             anchor.name = $"SlotAnchor_{index}";
+
+            // FIX: Đặt LOCAL position thay vì world position
+            anchor.transform.localPosition = CalculateSlotLocalPos(index, totalCount);
 
             if (animate)
             {
@@ -128,10 +138,6 @@ namespace FoodMatch.Tray
                 anchor.transform
                     .DOScale(Vector3.one, 0.3f)
                     .SetEase(Ease.OutBack);
-            }
-            else
-            {
-                anchor.transform.localScale = Vector3.one;
             }
 
             return anchor;
@@ -147,28 +153,27 @@ namespace FoodMatch.Tray
         // ─── Layout ───────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Tính world position căn giữa quanh pivot của BackupTray.
+        /// Tính LOCAL position căn giữa quanh pivot của SlotAnchors_Container.
+        /// Dùng local space để tránh bị ảnh hưởng bởi Canvas world scale.
         /// </summary>
-        private Vector3 CalculateSlotWorldPos(int index, int totalCount)
+        private Vector3 CalculateSlotLocalPos(int index, int totalCount)
         {
             float totalWidth = (totalCount - 1) * slotSpacingX;
-            float startX = transform.position.x - totalWidth / 2f;
+            float startX = -totalWidth / 2f; // Căn giữa quanh tâm container
 
             return new Vector3(
                 startX + index * slotSpacingX,
-                transform.position.y + slotOffsetY,
-                transform.position.z
+                slotOffsetY,
+                0f
             );
         }
 
         // ─── Inject to BackupTray ─────────────────────────────────────────────
-
         private void InjectAnchorsToBackupTray()
         {
             var transforms = new List<Transform>();
             foreach (var go in _activeSlotAnchors)
                 transforms.Add(go.transform);
-
             _backupTray.SetSlotAnchors(transforms);
         }
 
@@ -188,8 +193,13 @@ namespace FoodMatch.Tray
             }
 
             // Editor time: vẽ preview với capacity mặc định = 5
+            // Chuyển local → world để Gizmos vẽ đúng
             for (int i = 0; i < 5; i++)
-                Gizmos.DrawWireCube(CalculateSlotWorldPos(i, 5), Vector3.one * 0.4f);
+            {
+                Vector3 localPos = CalculateSlotLocalPos(i, 5);
+                Vector3 worldPos = transform.TransformPoint(localPos);
+                Gizmos.DrawWireCube(worldPos, Vector3.one * 0.4f);
+            }
         }
 #endif
     }

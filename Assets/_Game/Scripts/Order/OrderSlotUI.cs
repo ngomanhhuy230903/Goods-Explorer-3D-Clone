@@ -19,14 +19,23 @@ namespace FoodMatch.Order
         [Tooltip("Offset local để căn chỉnh food icon trong slot (thường để 0).")]
         [SerializeField] private Vector3 foodLocalOffset = Vector3.zero;
 
+        [Header("─── Food Icon Scale ─────────────────")]
+        [Tooltip("Hệ số nhân scale so với scale GỐC của prefab.\n" +
+                 "Ví dụ: prefab scale = (150,150,150), multiplier = 2 → kết quả (300,300,300).\n" +
+                 "1 = giữ nguyên scale gốc | 0.5 = thu nhỏ một nửa | 2 = gấp đôi.")]
+        [SerializeField] private float foodScaleMultiplier = 2f;
+
         // ─── Runtime ──────────────────────────────────────────────────────────
         public bool IsDelivered { get; private set; }
 
-        // Scale gốc của prefab — lưu lại khi spawn để dùng cho animation và FoodTargetScale
-        private Vector3 _prefabOriginalScale = Vector3.one;
+        // Scale gốc prefab × multiplier — tính khi ShowFoodIcon
+        private Vector3 _finalScale = Vector3.one;
 
-        /// <summary>Scale đích để FoodAnimator DOScale về khi food bay đến đây (= scale gốc prefab).</summary>
-        public Vector3 FoodTargetScale => _prefabOriginalScale;
+        /// <summary>
+        /// Scale đích để FoodAnimator DOScale về khi food bay đến đây.
+        /// = scale gốc prefab × foodScaleMultiplier.
+        /// </summary>
+        public Vector3 FoodTargetScale => _finalScale;
 
         /// <summary>Vị trí World — đích bay cho FoodItem từ grid.</summary>
         public Vector3 WorldPosition => transform.position;
@@ -42,7 +51,9 @@ namespace FoodMatch.Order
         // ─── Public API ───────────────────────────────────────────────────────
 
         /// <summary>
-        /// Spawn food 3D icon từ FoodItemData.prefab để hiển thị loại food cần order.
+        /// Spawn food 3D icon từ FoodItemData.prefab.
+        /// Scale cuối = scale gốc prefab × foodScaleMultiplier.
+        /// KHÔNG thay đổi prefab gốc.
         /// Gọi bởi OrderTray.Initialize().
         /// </summary>
         public void ShowFoodIcon(FoodItemData foodData)
@@ -55,24 +66,25 @@ namespace FoodMatch.Order
                 return;
             }
 
-            // Spawn prefab 3D làm con của slot transform
+            // Spawn làm con của slot
             _foodIcon = Instantiate(foodData.prefab, transform);
             _foodIcon.transform.localPosition = foodLocalOffset;
             _foodIcon.transform.localRotation = Quaternion.identity;
 
-            // Lưu scale gốc của prefab TRƯỚC khi zero để dùng cho animation và FoodTargetScale
-            _prefabOriginalScale = _foodIcon.transform.localScale;
-            _foodIcon.transform.localScale = Vector3.zero;
+            // Lưu scale gốc prefab rồi nhân với multiplier
+            Vector3 prefabOriginalScale = _foodIcon.transform.localScale;
+            _finalScale = prefabOriginalScale * foodScaleMultiplier;
 
-            // Disable physics — icon chỉ để nhìn, không tương tác
+            // Disable physics — icon chỉ để nhìn
             foreach (var col in _foodIcon.GetComponentsInChildren<Collider>())
                 col.enabled = false;
             foreach (var rb in _foodIcon.GetComponentsInChildren<Rigidbody>())
                 rb.isKinematic = true;
 
-            // Pop-in animation về đúng scale gốc của prefab
+            // Bắt đầu từ zero, animate đến scale gốc × multiplier
+            _foodIcon.transform.localScale = Vector3.zero;
             _foodIcon.transform
-                .DOScale(_prefabOriginalScale, 0.3f)
+                .DOScale(_finalScale, 0.3f)
                 .SetEase(Ease.OutBack)
                 .SetUpdate(true);
         }
@@ -86,7 +98,6 @@ namespace FoodMatch.Order
             if (IsDelivered) return;
             IsDelivered = true;
 
-            // Scale out icon rồi destroy
             if (_foodIcon != null)
             {
                 var icon = _foodIcon;
@@ -98,7 +109,6 @@ namespace FoodMatch.Order
                     .OnComplete(() => Destroy(icon));
             }
 
-            // Hiện checkmark
             if (checkmarkObject != null)
             {
                 checkmarkObject.SetActive(true);
@@ -123,6 +133,7 @@ namespace FoodMatch.Order
         public void ResetSlot()
         {
             IsDelivered = false;
+            _finalScale = Vector3.one;
             transform.DOKill();
             transform.localScale = Vector3.one;
             checkmarkObject?.SetActive(false);
