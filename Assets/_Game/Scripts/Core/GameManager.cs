@@ -1,14 +1,13 @@
 ﻿using UnityEngine;
 using DG.Tweening;
 using System;
+using FoodMatch.Core;
 
 public class GameManager : MonoBehaviour
 {
     public static GameManager Instance { get; private set; }
+    public GameState CurrentState { get; private set; } = GameState.None; // ← sentinel
 
-    public GameState CurrentState { get; private set; }
-
-    // Dùng Event để các Manager khác tự lắng nghe
     public static event Action<GameState> OnGameStateChanged;
 
     private void Awake()
@@ -16,22 +15,35 @@ public class GameManager : MonoBehaviour
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         DontDestroyOnLoad(gameObject);
-
-        // Khởi tạo DOTween
         DOTween.Init(true, true, LogBehaviour.Verbose).SetCapacity(200, 10);
     }
 
     private void Start()
     {
-        ChangeState(GameState.Init);
+        ChangeState(GameState.Init); // CurrentState = None → không bị block
     }
+
+    private void OnEnable()
+    {
+        EventBus.OnAllOrdersCompleted += HandleWin;
+        EventBus.OnBackupTrayFull += HandleLose;
+    }
+
+    private void OnDisable()
+    {
+        EventBus.OnAllOrdersCompleted -= HandleWin;
+        EventBus.OnBackupTrayFull -= HandleLose;
+    }
+
+    private void HandleWin() => ChangeState(GameState.Win);
+    private void HandleLose() => ChangeState(GameState.Lose);
 
     public void ChangeState(GameState newState)
     {
-        CurrentState = newState;
-        Debug.Log($"[GameManager] State changed to: {newState}");
+        if (CurrentState == newState) return;
 
-        // Phát sóng Event, không gọi trực tiếp UIManager
+        CurrentState = newState;
+        Debug.Log($"[GameManager] State → {newState}");
         OnGameStateChanged?.Invoke(newState);
     }
 }

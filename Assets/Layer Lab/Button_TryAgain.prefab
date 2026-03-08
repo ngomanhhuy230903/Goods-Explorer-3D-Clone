@@ -13,7 +13,7 @@ GameObject:
   - component: {fileID: 561023725601696732}
   - component: {fileID: 217294930867721586}
   m_Layer: 5
-  m_Name: Button01_225_BtnText_Red
+  m_Name: Button_TryAgain
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

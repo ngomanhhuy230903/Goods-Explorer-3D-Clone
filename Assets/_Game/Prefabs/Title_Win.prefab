@@ -297,7 +297,7 @@ GameObject:
   - component: {fileID: 6668449049997116533}
   - component: {fileID: 6668449049997116538}
   m_Layer: 5
-  m_Name: Title_Ribbon_Orange
+  m_Name: Title_Win
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

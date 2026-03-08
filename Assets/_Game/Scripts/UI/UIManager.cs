@@ -28,7 +28,6 @@ public class UIManager : MonoBehaviour
         SetPanel(panelGame, false);
     }
 
-    // Lắng nghe Event từ GameManager
     private void OnEnable() => GameManager.OnGameStateChanged += HandleStateChange;
     private void OnDisable() => GameManager.OnGameStateChanged -= HandleStateChange;
 
@@ -37,18 +36,30 @@ public class UIManager : MonoBehaviour
         switch (state)
         {
             case GameState.Init:
-                // Tự động chạy chuỗi Boot, xong thì báo GameManager chuyển Menu
                 ShowBootSequence(() => GameManager.Instance.ChangeState(GameState.Menu));
                 break;
+
             case GameState.Menu:
+                // Ẩn game panel khi về menu (phòng trường hợp từ Win/Lose về)
+                panelGame.DOKill();
+                panelGame.DOFade(0f, 0.3f).OnComplete(() => SetPanel(panelGame, false));
                 ShowHome();
                 break;
+
             case GameState.LoadLevel:
             case GameState.Play:
                 ShowGame();
                 break;
+
+            // Win / Lose: GameResultUI tự xử lý overlay + popup
+            // UIManager không cần làm gì thêm
+            case GameState.Win:
+            case GameState.Lose:
+                break;
         }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     private void ShowBootSequence(Action onComplete)
     {
@@ -90,6 +101,7 @@ public class UIManager : MonoBehaviour
 
         if (btnPlay != null)
         {
+            btnPlay.DOKill();
             btnPlay.localScale = Vector3.one * 0.9f;
             btnPlay.DOScale(1f, 0.6f).SetEase(Ease.OutBack).OnComplete(() =>
             {
@@ -108,19 +120,15 @@ public class UIManager : MonoBehaviour
 
     private void SetPanel(CanvasGroup cg, bool active)
     {
+        if (cg == null) return;
         cg.alpha = active ? 1f : 0f;
         cg.interactable = active;
         cg.blocksRaycasts = active;
     }
+
     public void OnClickPlayButton()
     {
-        // 1. Dừng animation nảy của nút Play để tránh lỗi khi chuyển màn
-        if (btnPlay != null)
-        {
-            btnPlay.DOKill();
-        }
-
-        // 2. Báo cho GameManager biết để đổi State sang Play (hoặc LoadLevel)
+        if (btnPlay != null) btnPlay.DOKill();
         int levelToLoad = SaveManager.CurrentLevel;
         LevelManager.Instance.RequestLoadLevel(levelToLoad);
     }
