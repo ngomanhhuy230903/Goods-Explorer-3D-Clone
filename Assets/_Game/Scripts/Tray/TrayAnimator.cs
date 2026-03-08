@@ -5,64 +5,92 @@ using FoodMatch.Food;
 namespace FoodMatch.Tray
 {
     /// <summary>
-    /// Xử lý toàn bộ animation DOTween của FoodTray.
-    /// Tách riêng để giữ FoodTray.cs tập trung vào logic.
+    /// Static helper: tất cả DOTween animation cho FoodTray và BackupTray.
+    /// Tách animation ra khỏi logic (SRP).
     /// </summary>
-    public class TrayAnimator : MonoBehaviour
+    public static class TrayAnimator
     {
-        [SerializeField] private Transform trayRoot;
-        [SerializeField] private float spinDuration = 0.5f;
-        [SerializeField] private float shrinkDuration = 0.4f;
+        // ─── Food layer shift ─────────────────────────────────────────────────
 
         /// <summary>
-        /// Animation win: xoay → thu nhỏ → ẩn.
-        /// Gọi khi tất cả order được hoàn thành.
+        /// Gọi khi 1 food được promote từ layer 1 lên layer 0.
+        /// Scale từ greyed (0.8x) về full (1x) + punch.
         /// </summary>
-        public void PlayWinAnimation(System.Action onComplete = null)
+        public static void PlayLayerShiftIn(FoodItem food)
         {
-            if (trayRoot == null) return;
+            if (food == null) return;
+
+            Vector3 prefabScale = food.Data?.prefab?.transform.localScale ?? Vector3.one;
+
+            Sequence seq = DOTween.Sequence();
+            seq.Append(food.transform.DOScale(prefabScale, 0.25f).SetEase(Ease.OutBack));
+            seq.Append(food.transform.DOPunchScale(Vector3.one * 0.15f, 0.2f, 4, 0.4f));
+            seq.SetUpdate(false);
+        }
+
+        // ─── Win condition: tray shrink & disappear ───────────────────────────
+
+        /// <summary>
+        /// Animation khi level thắng: khay xoay, thu nhỏ và biến mất.
+        /// </summary>
+        public static void PlayTrayWinDisappear(Transform tray, System.Action onComplete = null)
+        {
+            if (tray == null) { onComplete?.Invoke(); return; }
 
             Sequence seq = DOTween.Sequence();
 
-            // Xoay 360 độ
-            seq.Append(trayRoot
-                .DORotate(new Vector3(0, 0, 360f), spinDuration, RotateMode.FastBeyond360)
-                .SetEase(Ease.InOutQuad));
+            seq.Append(tray.DORotate(new Vector3(0, 0, 360f), 0.6f, RotateMode.FastBeyond360)
+                           .SetEase(Ease.InOutQuad));
 
-            // Thu nhỏ về 0
-            seq.Append(trayRoot
-                .DOScale(Vector3.zero, shrinkDuration)
-                .SetEase(Ease.InBack));
+            seq.Join(tray.DOScale(Vector3.zero, 0.6f).SetEase(Ease.InBack));
 
             seq.OnComplete(() =>
             {
-                trayRoot.gameObject.SetActive(false);
+                tray.gameObject.SetActive(false);
                 onComplete?.Invoke();
             });
+
+            seq.SetUpdate(false);
         }
 
-        /// <summary>
-        /// Animation layer shift: item mới được đẩy lên từ dưới.
-        /// Gọi trên từng FoodItem khi layer bên dưới được kích hoạt.
-        /// </summary>
-        public static void PlayLayerShiftIn(FoodItem item)
-        {
-            if (item == null) return;
+        // ─── BackupTray warning shake ─────────────────────────────────────────
 
-            // Bắt đầu từ scale nhỏ hơn rồi phóng to lên
-            item.transform.localScale = new Vector3(0.5f, 0.5f, 0.5f);
-            item.transform
-                .DOScale(item.Data?.normalScale ?? Vector3.one, 0.3f)
-                .SetEase(Ease.OutBack);
+        /// <summary>
+        /// Rung BackupTray khi gần đầy.
+        /// </summary>
+        public static void PlayWarningShake(Transform backupTray)
+        {
+            if (backupTray == null) return;
+            backupTray.DOKill();
+            backupTray.DOShakePosition(0.4f, strength: 0.15f, vibrato: 12, randomness: 40)
+                      .SetUpdate(false);
         }
 
+        // ─── Backup tray full flash ───────────────────────────────────────────
+
         /// <summary>
-        /// Punch scale nhẹ khi item được thêm vào backup tray.
+        /// Flash đỏ BackupTray khi đầy hoàn toàn.
         /// </summary>
-        public static void PlayBackupLand(Transform target)
+        public static void PlayFullFlash(UnityEngine.UI.Image trayBg,
+                                          Color warningColor, Color normalColor)
         {
-            if (target == null) return;
-            target.DOPunchScale(Vector3.one * 0.2f, 0.25f, 5, 0.5f);
+            if (trayBg == null) return;
+            trayBg.DOKill();
+            trayBg.DOColor(warningColor, 0.15f)
+                  .SetLoops(4, LoopType.Yoyo)
+                  .SetUpdate(false)
+                  .OnComplete(() => trayBg.color = normalColor);
+        }
+
+        // ─── Item use animation ───────────────────────────────────────────────
+
+        /// <summary>Scale bounce khi dùng item.</summary>
+        public static void PlayItemUsed(Transform itemButton)
+        {
+            if (itemButton == null) return;
+            itemButton.DOKill();
+            itemButton.DOPunchScale(Vector3.one * 0.3f, 0.35f, 7, 0.5f)
+                      .SetUpdate(true); // UI dùng SetUpdate(true)
         }
     }
 }

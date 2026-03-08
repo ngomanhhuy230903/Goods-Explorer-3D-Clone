@@ -7,6 +7,10 @@ namespace FoodMatch.Tray
     /// <summary>
     /// Gắn cùng GameObject với FoodGridSpawner.
     ///
+    /// THAY ĐỔI: Không tự generate food list nữa.
+    /// Nhận canonical food list từ OrderQueue (qua LevelManager) để đảm bảo
+    /// số lượng từng loại food trong FoodTray khớp hoàn toàn với OrderQueue.
+    ///
     /// Đăng ký OnSpawnComplete — được invoke SAU KHI animation cell CUỐI CÙNG xong
     /// → lúc đó tất cả anchor.position đã đúng → SpawnFoods chạy bình thường.
     /// </summary>
@@ -20,6 +24,13 @@ namespace FoodMatch.Tray
 
         private readonly List<FoodTray> _trays = new();
         private LevelConfig _pendingConfig;
+
+        /// <summary>
+        /// Canonical food list nhận từ OrderQueue.
+        /// Nếu null → fallback về random (không khuyến khích).
+        /// </summary>
+        private IReadOnlyList<FoodItemData> _canonicalFoodList;
+
         private FoodGridSpawner _gridSpawner;
 
         private void Awake()
@@ -27,6 +38,19 @@ namespace FoodMatch.Tray
             _gridSpawner = GetComponent<FoodGridSpawner>();
             if (_gridSpawner == null)
                 Debug.LogError("[FoodTraySpawner] Không tìm thấy FoodGridSpawner!");
+        }
+
+        /// <summary>
+        /// Gọi TRƯỚC SpawnFood() để truyền canonical food list từ OrderQueue.
+        /// LevelManager chịu trách nhiệm gọi theo đúng thứ tự:
+        ///   1. orderQueue.Initialize(config)       → sinh SharedFoodList
+        ///   2. foodTraySpawner.SetFoodList(...)    → inject list vào spawner
+        ///   3. foodTraySpawner.SpawnFood(config)   → bắt đầu spawn
+        /// </summary>
+        public void SetFoodList(IReadOnlyList<FoodItemData> canonicalFoodList)
+        {
+            _canonicalFoodList = canonicalFoodList;
+            Log($"SetFoodList: nhận {canonicalFoodList?.Count ?? 0} foods từ OrderQueue.");
         }
 
         public void SpawnFood(LevelConfig config)
@@ -47,6 +71,7 @@ namespace FoodMatch.Tray
                 tray?.ClearTray();
             _trays.Clear();
             _pendingConfig = null;
+            _canonicalFoodList = null;
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -56,7 +81,6 @@ namespace FoodMatch.Tray
             _gridSpawner.OnSpawnComplete -= OnGridSpawnComplete;
             if (_pendingConfig == null) return;
 
-            // neutralContainer do FoodGridSpawner tạo runtime, scale luôn (1,1,1)
             Transform neutralContainer = _gridSpawner.GetNeutralContainer();
             if (neutralContainer == null)
             {
@@ -64,7 +88,6 @@ namespace FoodMatch.Tray
                 return;
             }
 
-            // Lúc này tất cả cell đã scale xong → anchor.position đúng
             _trays.Clear();
             _trays.AddRange(
                 _gridSpawner.GetCellContainer().GetComponentsInChildren<FoodTray>());
@@ -77,7 +100,22 @@ namespace FoodMatch.Tray
 
             Log($"Tìm thấy {_trays.Count} FoodTray.");
 
-            List<FoodItemData> foodList = GenerateFoodList(_pendingConfig);
+            // ── Dùng canonical list từ OrderQueue, fallback về random nếu null ──
+            List<FoodItemData> foodList;
+            if (_canonicalFoodList != null && _canonicalFoodList.Count > 0)
+            {
+                // Copy ra list mới để shuffle mà không ảnh hưởng canonical list gốc
+                foodList = new List<FoodItemData>(_canonicalFoodList);
+                ShuffleList(foodList); // Shuffle lại để vị trí spawn trong tray ngẫu nhiên
+                Log($"Dùng canonical food list: {foodList.Count} items.");
+            }
+            else
+            {
+                Debug.LogWarning("[FoodTraySpawner] _canonicalFoodList null! " +
+                                 "Fallback về random. Gọi SetFoodList() trước SpawnFood().");
+                foodList = GenerateRandomFoodList(_pendingConfig);
+            }
+
             var distribution = DistributeToTrays(foodList);
 
             for (int i = 0; i < _trays.Count; i++)
@@ -97,7 +135,11 @@ namespace FoodMatch.Tray
 
         // ─────────────────────────────────────────────────────────────────────
 
-        private List<FoodItemData> GenerateFoodList(LevelConfig config)
+        /// <summary>
+        /// Fallback: chỉ dùng khi không có canonical list.
+        /// Kết quả sẽ không khớp với OrderQueue — tránh dùng trong production.
+        /// </summary>
+        private List<FoodItemData> GenerateRandomFoodList(LevelConfig config)
         {
             var result = new List<FoodItemData>();
             var foods = config.availableFoods;
@@ -106,11 +148,7 @@ namespace FoodMatch.Tray
             for (int i = 0; i < config.totalFoodCount; i++)
                 result.Add(foods[Random.Range(0, foods.Count)]);
 
-            for (int i = result.Count - 1; i > 0; i--)
-            {
-                int j = Random.Range(0, i + 1);
-                (result[i], result[j]) = (result[j], result[i]);
-            }
+            ShuffleList(result);
             return result;
         }
 
@@ -125,6 +163,7 @@ namespace FoodMatch.Tray
 
             int foodIdx = 0, remaining = foodList.Count;
 
+            // Đảm bảo mỗi tray có ít nhất 2 food trước
             for (int i = 0; i < trayCount && remaining > 0; i++)
             {
                 int give = Mathf.Min(2, remaining);
@@ -133,6 +172,7 @@ namespace FoodMatch.Tray
                 remaining -= give;
             }
 
+            // Phân phối phần còn lại vào các tray chưa đầy
             while (remaining > 0)
             {
                 var available = new List<int>();
@@ -151,6 +191,15 @@ namespace FoodMatch.Tray
             }
 
             return result;
+        }
+
+        private static void ShuffleList<T>(List<T> list)
+        {
+            for (int i = list.Count - 1; i > 0; i--)
+            {
+                int j = Random.Range(0, i + 1);
+                (list[i], list[j]) = (list[j], list[i]);
+            }
         }
 
         private void Log(string msg)

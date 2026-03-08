@@ -1,39 +1,95 @@
 ﻿using UnityEngine;
-using FoodMatch.Tray;
+using UnityEngine.EventSystems;
+using DG.Tweening;
+using FoodMatch.Food;
 
 namespace FoodMatch.Food
 {
     /// <summary>
-    /// Xử lý touch/click cho FoodItem 3D.
+    /// Xử lý tap/click trên FoodItem.
+    ///
+    /// THAY ĐỔI: Dùng IPointerClickHandler thay OnMouseDown.
+    /// Lý do: Canvas "Screen Space - Camera" dùng Graphic Raycaster,
+    /// nên input phải đi qua EventSystem — OnMouseDown không nhận được.
+    ///
+    /// ════ SETUP BẮT BUỘC ════════════════════════════════════════════
+    ///  Main Camera → Add Component → Physics Raycaster
+    ///  (Để EventSystem có thể raycast vào Collider 3D của food)
+    /// ═══════════════════════════════════════════════════════════════
     /// </summary>
-    [RequireComponent(typeof(FoodItem))]
-    public class FoodInteractionHandler : MonoBehaviour
+    [RequireComponent(typeof(Collider))]
+    public class FoodInteractionHandler : MonoBehaviour,
+                                          IPointerClickHandler,
+                                          IPointerDownHandler,
+                                          IPointerUpHandler
     {
-        //private FoodItem _foodItem;
-        //private FoodTray _tray;
+        // ─── Cache ────────────────────────────────────────────────────────────
+        private FoodItem _foodItem;
+        private bool _isProcessing = false;
+        private Vector3 _originalScale;
 
-        //private void Awake()
-        //{
-        //    _foodItem = GetComponent<FoodItem>();
-        //}
+        // ─────────────────────────────────────────────────────────────────────
+        private void Awake()
+        {
+            _foodItem = GetComponent<FoodItem>() ?? GetComponentInParent<FoodItem>();
+            _originalScale = transform.localScale;
+        }
 
-        //public void SetTray(FoodTray tray)
-        //{
-        //    _tray = tray;
-        //}
+        // ─── IPointerDownHandler — press feedback ─────────────────────────────
+        public void OnPointerDown(PointerEventData eventData)
+        {
+            if (_isProcessing) return;
+            transform.DOKill();
+            transform.DOScale(_originalScale * 0.88f, 0.08f).SetEase(Ease.OutQuad).SetUpdate(true);
+        }
 
-        //// Unity tự gọi khi click/touch vào Collider 3D
-        //private void OnMouseDown()
-        //{
-        //    if (_tray == null) return;
+        // ─── IPointerUpHandler — release mà không click (drag) ───────────────
+        public void OnPointerUp(PointerEventData eventData)
+        {
+            if (_isProcessing) return;
+            transform.DOKill();
+            transform.DOScale(_originalScale, 0.1f).SetEase(Ease.OutBack).SetUpdate(true);
+        }
 
-        //    FoodItem selected = _tray.TrySelectItem(_foodItem);
+        // ─── IPointerClickHandler — logic chính ──────────────────────────────
+        public void OnPointerClick(PointerEventData eventData)
+        {
+            // Restore scale trước
+            transform.DOKill();
+            transform.DOScale(_originalScale, 0.12f).SetEase(Ease.OutBack).SetUpdate(true);
 
-        //    if (selected != null)
-        //    {
-        //        Debug.Log($"[Interaction] Selected: {selected.Data?.foodName}");
-        //        // Day 4: EventBus.OnItemSelected?.Invoke(selected);
-        //    }
-        //}
+            HandleTap();
+        }
+
+        // ─── Core ─────────────────────────────────────────────────────────────
+        private void HandleTap()
+        {
+            if (_isProcessing) return;
+
+            if (_foodItem == null)
+            {
+                Debug.LogWarning("[FoodInteractionHandler] _foodItem null!");
+                return;
+            }
+
+            if (FoodFlowController.Instance == null)
+            {
+                Debug.LogWarning("[FoodInteractionHandler] FoodFlowController.Instance null!");
+                return;
+            }
+
+            // Layer > 0: locked — chỉ bounce, không xử lý
+            if (_foodItem.LayerIndex > 0)
+            {
+                _foodItem.PlayLockedBounce();
+                return;
+            }
+
+            _isProcessing = true;
+            FoodFlowController.Instance.HandleFoodTapped(_foodItem, () =>
+            {
+                _isProcessing = false;
+            });
+        }
     }
 }
