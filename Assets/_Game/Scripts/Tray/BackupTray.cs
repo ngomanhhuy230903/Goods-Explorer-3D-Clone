@@ -2,7 +2,6 @@
 using UnityEngine;
 using DG.Tweening;
 using FoodMatch.Core;
-using FoodMatch.Data;
 using FoodMatch.Food;
 
 namespace FoodMatch.Tray
@@ -10,29 +9,21 @@ namespace FoodMatch.Tray
     /// <summary>
     /// Khay chứa đồ thừa.
     ///
-    /// Có 2 chế độ hoạt động:
-    ///   A) Standalone: gọi Initialize(count, spacing) — tự tạo anchor GameObjects.
-    ///   B) Kết hợp BackupTraySpawner: Spawner tạo anchor từ pool rồi gọi
-    ///      SetSlotAnchors() + ResetTray() để inject vào đây.
-    ///
-    /// BackupTraySpawner dùng chế độ B nên cần 3 method:
-    ///   - SetSlotAnchors(List&lt;Transform&gt;)   ← inject anchors từ ngoài vào
-    ///   - ResetTray(int capacity)             ← reset occupants, không tạo anchor
-    ///   - ExpandCapacity(int addCount)        ← overload nhận số slot tăng thêm
+    /// THAY ĐỔI:
+    ///   - ReceiveFood() lưu đúng anchor transform để food snap vị trí chính xác.
+    ///   - GetNextSlotWorldPosition() trả về world position của anchor thực tế.
+    ///   - Thêm GetAnchorForFood() để FoodFlowController snap food sau animation.
     /// </summary>
     public class BackupTray : MonoBehaviour
     {
         // ─── Inspector ────────────────────────────────────────────────────────
         [Header("─── Slot Visual (chế độ Standalone) ──")]
-        [Tooltip("Chỉ dùng khi KHÔNG có BackupTraySpawner. Prefab visual placeholder cho slot.")]
         [SerializeField] private GameObject slotVisualPrefab;
 
         [Header("─── Warning ──────────────────────────")]
-        [Tooltip("Cảnh báo khi số slot trống <= giá trị này.")]
         [SerializeField] private int warningThreshold = 2;
 
         [Header("─── Expansion (chế độ Standalone) ────")]
-        [Tooltip("Số slot tối đa. Chỉ dùng khi KHÔNG có BackupTraySpawner.")]
         [SerializeField] private int maxSlots = 7;
         [SerializeField] private float shiftDuration = 0.35f;
 
@@ -41,6 +32,8 @@ namespace FoodMatch.Tray
 
         // ─── Runtime ──────────────────────────────────────────────────────────
         private readonly List<Transform> _slotAnchors = new List<Transform>();
+
+        // slot index → food item đang chiếm
         private readonly Dictionary<int, FoodItem> _occupants = new Dictionary<int, FoodItem>();
 
         private float _slotSpacing = 1.5f;
@@ -57,10 +50,6 @@ namespace FoodMatch.Tray
         // CHẾ ĐỘ B — BackupTraySpawner inject từ ngoài vào
         // =========================================================================
 
-        /// <summary>
-        /// BackupTraySpawner gọi sau khi spawn xong anchor list.
-        /// BackupTray dùng list này làm nguồn sự thật cho slot positions.
-        /// </summary>
         public void SetSlotAnchors(List<Transform> anchors)
         {
             _slotAnchors.Clear();
@@ -69,10 +58,6 @@ namespace FoodMatch.Tray
             Log($"SetSlotAnchors: {_capacity} anchors injected.");
         }
 
-        /// <summary>
-        /// Dọn occupants, set capacity mới — KHÔNG tạo anchor (Spawner đã lo).
-        /// Gọi bởi BackupTraySpawner sau SetSlotAnchors().
-        /// </summary>
         public void ResetTray(int capacity)
         {
             foreach (var kv in _occupants)
@@ -86,11 +71,6 @@ namespace FoodMatch.Tray
             Log($"ResetTray: capacity={capacity}");
         }
 
-        /// <summary>
-        /// Overload dùng bởi BackupTraySpawner.AddExtraSlot().
-        /// Spawner đã lo animation + inject anchor mới qua SetSlotAnchors().
-        /// BackupTray chỉ cập nhật capacity và raise event.
-        /// </summary>
         public void ExpandCapacity(int addCount)
         {
             _capacity += addCount;
@@ -100,13 +80,9 @@ namespace FoodMatch.Tray
         }
 
         // =========================================================================
-        // CHẾ ĐỘ A — Standalone, tự tạo anchor (dùng khi không có Spawner)
+        // CHẾ ĐỘ A — Standalone
         // =========================================================================
 
-        /// <summary>
-        /// Tự tạo slot anchors runtime. Dùng khi không có BackupTraySpawner.
-        /// Nếu có BackupTraySpawner thì dùng SetSlotAnchors() + ResetTray() thay thế.
-        /// </summary>
         public void Initialize(int initialSlotCount, float slotSpacing = 1.5f)
         {
             _slotSpacing = slotSpacing;
@@ -128,17 +104,9 @@ namespace FoodMatch.Tray
             Log($"Initialize: {_capacity} slots, spacing={slotSpacing}");
         }
 
-        /// <summary>
-        /// No-arg overload — mở rộng thêm 1 slot (standalone mode).
-        /// Tự tạo anchor mới, tự DOMove các slot cũ.
-        /// </summary>
         public void ExpandCapacity()
         {
-            if (_capacity >= maxSlots)
-            {
-                Log($"Đã đạt maxSlots={maxSlots}.");
-                return;
-            }
+            if (_capacity >= maxSlots) { Log($"Đã đạt maxSlots={maxSlots}."); return; }
 
             int newCount = _capacity + 1;
             float totalWidth = (newCount - 1) * _slotSpacing;
@@ -171,17 +139,38 @@ namespace FoodMatch.Tray
         }
 
         // =========================================================================
-        // CORE API (dùng chung cả 2 chế độ)
+        // CORE API
         // =========================================================================
 
-        /// <summary>World position của slot trống tiếp theo. Vector3.zero nếu đầy.</summary>
+        /// <summary>
+        /// World position của anchor slot trống tiếp theo.
+        /// FoodFlowController dùng vị trí này làm đích bay của food.
+        /// </summary>
         public Vector3 GetNextSlotWorldPosition()
         {
             int idx = GetFreeSlotIndex();
-            return idx >= 0 ? _slotAnchors[idx].position : Vector3.zero;
+            if (idx < 0) return Vector3.zero;
+            return _slotAnchors[idx].position;
         }
 
-        /// <summary>Nhận food vào slot trống. Gọi bởi FoodFlowController sau animation bay.</summary>
+        /// <summary>
+        /// Sau khi food bay xong và gọi ReceiveFood(), trả về anchor transform
+        /// để FoodFlowController có thể gắn SlotFollower hoặc snap chính xác.
+        /// </summary>
+        public Transform GetAnchorForFood(FoodItem food)
+        {
+            foreach (var kv in _occupants)
+            {
+                if (kv.Value == food && kv.Key < _slotAnchors.Count)
+                    return _slotAnchors[kv.Key];
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Nhận food vào slot trống. Gọi bởi FoodFlowController SAU animation bay.
+        /// Food đã được snap về targetPos bởi FoodFlowController trước khi gọi hàm này.
+        /// </summary>
         public void ReceiveFood(FoodItem food)
         {
             int idx = GetFreeSlotIndex();
@@ -192,11 +181,16 @@ namespace FoodMatch.Tray
             }
 
             _occupants[idx] = food;
-            Log($"ReceiveFood: {food.Data?.foodName} → slot[{idx}]");
+
+            // Snap food về đúng anchor (phòng trường hợp anchor di chuyển
+            // trong khoảng thời gian food đang bay)
+            if (idx < _slotAnchors.Count)
+                food.transform.position = _slotAnchors[idx].position;
+
+            Log($"ReceiveFood: {food.Data?.foodName} → slot[{idx}] @ {_slotAnchors[idx].position}");
             CheckWarningAndLose();
         }
 
-        /// <summary>Lấy food ra (Magnet Item hoặc re-match).</summary>
         public bool TryRemoveFood(FoodItem food)
         {
             foreach (var kv in _occupants)
@@ -204,12 +198,14 @@ namespace FoodMatch.Tray
                 if (kv.Value != food) continue;
                 _occupants.Remove(kv.Key);
                 Log($"TryRemoveFood: {food.Data?.foodName} removed from slot[{kv.Key}]");
+
+                // Reset warning nếu slot vừa giải phóng giúp thoát ngưỡng warning
+                CheckWarningAndLose();
                 return true;
             }
             return false;
         }
 
-        /// <summary>Xóa toàn bộ food (Item Clear Tray).</summary>
         public void ClearAllFood()
         {
             foreach (var kv in _occupants)
@@ -221,7 +217,7 @@ namespace FoodMatch.Tray
             Log("ClearAllFood hoàn tất.");
         }
 
-        /// <summary>Tất cả food hiện trong backup (Magnet Item).</summary>
+        /// <summary>Tất cả food hiện trong backup (dùng cho Magnet Item và auto-match).</summary>
         public List<FoodItem> GetAllFoods()
         {
             var result = new List<FoodItem>();
@@ -285,7 +281,7 @@ namespace FoodMatch.Tray
             if (free <= warningThreshold && !_warningActive)
             {
                 _warningActive = true;
-                Log($"CANH BAO: con {free} slot trong!");
+                Log($"CẢNH BÁO: còn {free} slot trống!");
                 EventBus.RaiseBackupWarning(_occupants.Count, _capacity);
             }
             else if (free > warningThreshold)

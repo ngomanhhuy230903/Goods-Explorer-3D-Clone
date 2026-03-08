@@ -11,6 +11,9 @@ namespace FoodMatch.Order
     /// <summary>
     /// Khay order trên UI. Nhận OrderData, spawn food 3D icon tại các slot,
     /// và là đích bay của food từ grid.
+    ///
+    /// THAY ĐỔI: OnEnterActive() gọi EventBus.RaiseNewOrderActive(foodID)
+    /// → FoodFlowController tự động scan BackupTray để auto-match.
     /// </summary>
     public class OrderTray : MonoBehaviour, IPoolable
     {
@@ -66,7 +69,7 @@ namespace FoodMatch.Order
 
         /// <summary>
         /// Khởi tạo tray: lookup FoodItemData → spawn icon 3D tại tất cả slots → slide in.
-        /// Scale của từng icon được quản lý độc lập bởi mỗi OrderSlotUI (Inspector của slot).
+        /// Khi enter animation xong → ChangeState(Active) → raise OnNewOrderActive.
         /// </summary>
         public void Initialize(OrderData orderData, int trayIndex,
                                Vector2 homePos, bool enterFromTop = true)
@@ -85,7 +88,6 @@ namespace FoodMatch.Order
             }
             else
             {
-                // Mỗi slot tự quản lý foodIconScale của nó qua Inspector
                 foreach (var slot in slots)
                     slot.ShowFoodIcon(foodData);
             }
@@ -97,12 +99,12 @@ namespace FoodMatch.Order
                     .DOAnchorPos(homePos, 0.45f)
                     .SetEase(Ease.OutBack)
                     .SetUpdate(true)
-                    .OnComplete(() => ChangeState(OrderState.Active));
+                    .OnComplete(() => ChangeState(OrderState.Active)); // ← raise event ở đây
             }
             else
             {
                 _rectTransform.anchoredPosition = homePos;
-                ChangeState(OrderState.Active);
+                ChangeState(OrderState.Active); // ← raise event ngay
             }
         }
 
@@ -133,7 +135,6 @@ namespace FoodMatch.Order
         public Vector3 GetNextSlotFoodScale()
         {
             int next = OrderData?.DeliveredCount ?? 0;
-            // Lấy FoodTargetScale từ slot tương ứng — mỗi slot có thể có scale riêng
             return next < slots.Count ? slots[next].FoodTargetScale : Vector3.one;
         }
 
@@ -170,6 +171,16 @@ namespace FoodMatch.Order
                 .SetEase(Ease.InOutSine)
                 .SetLoops(-1, LoopType.Yoyo)
                 .SetUpdate(true);
+
+            // ── THÊM MỚI: Thông báo để FoodFlowController scan BackupTray ──
+            // Delay nhỏ để đảm bảo tray đã settle vào đúng vị trí trước khi
+            // food bay từ BackupTray lên (tránh food bay đến vị trí cũ)
+            if (OrderData != null)
+            {
+                DOVirtual.DelayedCall(0.1f,
+                    () => EventBus.RaiseNewOrderActive(OrderData.FoodID),
+                    false);
+            }
         }
 
         private void OnEnterCompleted()
