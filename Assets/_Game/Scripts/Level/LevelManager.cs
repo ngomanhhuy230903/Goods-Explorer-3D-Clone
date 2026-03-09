@@ -9,13 +9,17 @@ namespace FoodMatch.Level
 {
     /// <summary>
     /// Điều phối toàn bộ vòng đời 1 level.
-    /// Gắn vào GameObject "LevelManager" trong Scene Game.
     ///
-    /// THỨ TỰ INIT QUAN TRỌNG:
-    ///   1. InitOrderQueue        → sinh SharedFoodList (nguồn sự thật duy nhất)
-    ///   2. InitFoodTraySpawner   → inject SharedFoodList, rồi mới spawn
-    ///   3. Inject FoodFlowController
-    /// Đảm bảo FoodTray và OrderTray luôn dùng cùng số lượng từng loại food.
+    /// THỨ TỰ INIT BẮT BUỘC:
+    ///   1. InitBackupTray          → sẵn sàng nhận food
+    ///   2. InitFoodGrid            → tạo polygon 3D (async coroutine bên trong)
+    ///   3. InitOrderQueue          → sinh SharedFoodList (SOURCE OF TRUTH)
+    ///   4. InitFoodTraySpawner     → đăng ký callback, chờ grid xong rồi tự lấy SharedFoodList
+    ///   5. InjectFoodFlowController
+    ///   6. InitProgressTracker
+    ///
+    /// FoodTraySpawner KHÔNG cần SetFoodList() nữa — tự lấy từ OrderQueue.Instance.SharedFoodList
+    /// trong callback OnGridSpawnComplete, đảm bảo luôn đồng nhất với OrderQueue.
     /// </summary>
     public class LevelManager : MonoBehaviour
     {
@@ -36,7 +40,7 @@ namespace FoodMatch.Level
         [Tooltip("Tạo hình khối polygon 3D — KHÔNG đụng vào.")]
         [SerializeField] private FoodGridSpawner foodGridSpawner;
 
-        [Tooltip("Spawn food vào các anchor positions trong FoodTray — chạy SAU foodGridSpawner.")]
+        [Tooltip("Spawn food vào FoodTray SAU khi grid xong. Tự lấy SharedFoodList từ OrderQueue.")]
         [SerializeField] private FoodTraySpawner foodTraySpawner;
 
         // ─── Runtime ──────────────────────────────────────────────────────────
@@ -50,15 +54,8 @@ namespace FoodMatch.Level
             Instance = this;
         }
 
-        private void OnEnable()
-        {
-            GameManager.OnGameStateChanged += HandleGameStateChanged;
-        }
-
-        private void OnDisable()
-        {
-            GameManager.OnGameStateChanged -= HandleGameStateChanged;
-        }
+        private void OnEnable() => GameManager.OnGameStateChanged += HandleGameStateChanged;
+        private void OnDisable() => GameManager.OnGameStateChanged -= HandleGameStateChanged;
 
         private void HandleGameStateChanged(GameState state)
         {
@@ -66,28 +63,12 @@ namespace FoodMatch.Level
                 LoadLevel(CurrentLevelIndex);
             else if (state == GameState.Win || state == GameState.Lose)
             {
-                // Cleanup ngay khi Win/Lose để food biến mất trước khi popup hiện
                 FoodFlowController.Instance?.ResetDependencies();
                 backupTray?.ClearAllFood();
                 foodTraySpawner?.ClearFood();
                 orderQueue?.Reset();
                 foodGridSpawner?.ClearGrid();
             }
-        }
-
-        /// <summary>
-        /// Ẩn/cleanup tất cả gameplay objects khi Win/Lose.
-        /// KHÔNG reset hoàn toàn — chỉ ẩn visual. Reset thật sự xảy ra ở ResetAllSystems().
-        /// </summary>
-        private void CleanupGameplayObjects()
-        {
-            // Stop food fly animations
-            FoodFlowController.Instance?.ResetDependencies();
-
-            // Return food về pool (ẩn khỏi màn hình)
-            backupTray?.ClearAllFood();
-            foodTraySpawner?.ClearFood();
-            foodGridSpawner?.ClearGrid();
         }
 
         // ─── Public API ───────────────────────────────────────────────────────
@@ -123,23 +104,16 @@ namespace FoodMatch.Level
 
             ResetAllSystems();
 
-            // ── Init theo thứ tự phụ thuộc ────────────────────────────────
+            // ── Thứ tự init có phụ thuộc — KHÔNG đổi thứ tự ─────────────────
 
-            InitBackupTray(config);      // BackupTray sẵn sàng nhận food
-            InitFoodGrid(config);        // Tạo hình khối polygon 3D
+            InitBackupTray(config);   // 1. Backup tray sẵn sàng
+            InitFoodGrid(config);     // 2. Tạo grid (async, callback khi xong)
 
-            // !! QUAN TRỌNG: OrderQueue phải init TRƯỚC FoodTraySpawner !!
-            // OrderQueue.Initialize() → sinh SharedFoodList
-            // FoodTraySpawner cần SharedFoodList để spawn đúng số lượng từng loại
-            InitOrderQueue(config);
+            InitOrderQueue(config);   // 3. Sinh SharedFoodList — PHẢI trước FoodTraySpawner
+            InitFoodTraySpawner(config); // 4. Đăng ký callback, sẽ lấy SharedFoodList khi grid xong
 
-            // Inject SharedFoodList vào FoodTraySpawner, rồi mới spawn
-            InitFoodTraySpawner(config);
-
-            // ── INJECT vào FoodFlowController ─────────────────────────────
-            InjectFoodFlowController();
-
-            InitProgressTracker(config);
+            InjectFoodFlowController(); // 5. Inject dependencies
+            InitProgressTracker(config); // 6.
 
             GameManager.Instance.ChangeState(GameState.Play);
             Debug.Log($"[LevelManager] Level {levelIndex} sẵn sàng!");
@@ -150,7 +124,6 @@ namespace FoodMatch.Level
         private void InitBackupTray(LevelConfig config)
         {
             if (backupTray == null) { Debug.LogWarning("[LevelManager] BackupTray chưa gán!"); return; }
-
             if (backupTraySpawner != null)
                 backupTraySpawner.SpawnSlots(config.backupTrayCapacity);
             else
@@ -163,53 +136,46 @@ namespace FoodMatch.Level
             foodGridSpawner.SpawnGrid(config);
         }
 
+        /// <summary>
+        /// Bước 3: OrderQueue.Initialize() sinh SharedFoodList.
+        /// SharedFoodList = SOURCE OF TRUTH cho cả OrderTray và FoodTray.
+        /// totalFood trong config đã được LevelGeneratorEditor tính đúng:
+        ///   totalFood = (gridCapacity / (foodTypes×3)) × (foodTypes×3)
+        /// → đảm bảo chia đều và không bao giờ vượt capacity FoodTray.
+        /// </summary>
         private void InitOrderQueue(LevelConfig config)
         {
             if (orderQueue == null) { Debug.LogWarning("[LevelManager] OrderQueue chưa gán!"); return; }
             orderQueue.Initialize(config);
-            // Sau bước này, orderQueue.SharedFoodList đã sẵn sàng
+            // Sau dòng này: orderQueue.SharedFoodList đã có đầy đủ dữ liệu
         }
 
         /// <summary>
-        /// Inject SharedFoodList từ OrderQueue vào FoodTraySpawner TRƯỚC khi spawn.
-        /// Đảm bảo 2 hệ thống dùng cùng 1 nguồn food list → số lượng từng loại khớp nhau.
+        /// Bước 4: FoodTraySpawner chỉ cần gọi SpawnFood().
+        /// Nó sẽ tự lấy OrderQueue.Instance.SharedFoodList trong callback OnGridSpawnComplete.
+        /// KHÔNG cần gọi SetFoodList() nữa — đã deprecated.
         /// </summary>
         private void InitFoodTraySpawner(LevelConfig config)
         {
             if (foodTraySpawner == null) { Debug.LogWarning("[LevelManager] FoodTraySpawner chưa gán!"); return; }
 
-            // Inject canonical food list từ OrderQueue (đã init ở bước trước)
-            if (orderQueue != null && orderQueue.SharedFoodList != null)
-            {
-                foodTraySpawner.SetFoodList(orderQueue.SharedFoodList);
-            }
-            else
-            {
-                Debug.LogWarning("[LevelManager] SharedFoodList null — FoodTraySpawner sẽ fallback về random. " +
-                                 "Kiểm tra InitOrderQueue() đã chạy trước chưa.");
-            }
-
+            // KHÔNG gọi foodTraySpawner.SetFoodList() — deprecated, không cần thiết.
+            // FoodTraySpawner tự lấy SharedFoodList từ OrderQueue.Instance trong callback.
             foodTraySpawner.SpawnFood(config);
         }
 
-        /// <summary>
-        /// Inject OrderQueue và BackupTray đã init vào FoodFlowController.
-        /// </summary>
         private void InjectFoodFlowController()
         {
             if (FoodFlowController.Instance == null)
             {
-                Debug.LogError("[LevelManager] FoodFlowController.Instance là null! " +
-                               "Đảm bảo FoodFlowController đã có trong Scene Game.");
+                Debug.LogError("[LevelManager] FoodFlowController.Instance là null!");
                 return;
             }
-
             if (orderQueue == null || backupTray == null)
             {
-                Debug.LogError("[LevelManager] Không thể Inject: orderQueue hoặc backupTray null!");
+                Debug.LogError("[LevelManager] orderQueue hoặc backupTray null!");
                 return;
             }
-
             FoodFlowController.Instance.Inject(orderQueue, backupTray);
         }
 
@@ -223,9 +189,9 @@ namespace FoodMatch.Level
         {
             FoodFlowController.Instance?.ResetDependencies();
             backupTray?.ClearAllFood();
-            foodTraySpawner?.ClearFood();  // ← THÊM VÀO ĐÂY, trước ClearGrid
+            foodTraySpawner?.ClearFood();  // trước ClearGrid
             orderQueue?.Reset();
-            foodGridSpawner?.ClearGrid();  // ← SAU CÙNG
+            foodGridSpawner?.ClearGrid();  // sau cùng
         }
 
         // ─── Debug ────────────────────────────────────────────────────────────

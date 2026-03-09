@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 361ce6f39e3f10642ba326fd65d82e48, type: 3}
-  m_Name: Level_13
+  m_Name: 
   m_EditorClassIdentifier: 
   levelIndex: 13
   levelDisplayName: Chef's Challenge
@@ -24,10 +24,10 @@ MonoBehaviour:
   - {fileID: 11400000, guid: d006644d9f959fc4ea0cec786ff0cc40, type: 2}
   - {fileID: 11400000, guid: 204ce4b5e8cbd7f44841b837aa70d70e, type: 2}
   - {fileID: 11400000, guid: bb4cd877240b04443b2f6c7a25bfd65a, type: 2}
-  totalFoodCount: 162
+  totalFoodCount: 270
   layerCount: 4
-  trayColumns: 5
-  trayRows: 3
-  maxActiveCustomers: 2
+  trayColumns: 6
+  trayRows: 4
+  maxActiveOrders: 2
   backupTrayCapacity: 5
   timeLimitSeconds: 0

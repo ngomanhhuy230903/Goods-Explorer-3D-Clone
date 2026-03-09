@@ -1,18 +1,23 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 using FoodMatch.Data;
+using FoodMatch.Order;
 
 namespace FoodMatch.Tray
 {
     /// <summary>
     /// Gắn cùng GameObject với FoodGridSpawner.
     ///
-    /// THAY ĐỔI: Không tự generate food list nữa.
-    /// Nhận canonical food list từ OrderQueue (qua LevelManager) để đảm bảo
-    /// số lượng từng loại food trong FoodTray khớp hoàn toàn với OrderQueue.
+    /// SOURCE OF TRUTH: FoodTray luôn lấy OrderQueue.Instance.SharedFoodList
+    /// làm nguồn duy nhất — đảm bảo số lượng từng loại food trong FoodTray
+    /// khớp 100% với OrderQueue, không phụ thuộc thứ tự gọi từ LevelManager.
     ///
-    /// Đăng ký OnSpawnComplete — được invoke SAU KHI animation cell CUỐI CÙNG xong
-    /// → lúc đó tất cả anchor.position đã đúng → SpawnFoods chạy bình thường.
+    /// Thứ tự gọi từ LevelManager:
+    ///   1. orderQueue.Initialize(config)     → sinh SharedFoodList
+    ///   2. foodTraySpawner.SpawnFood(config) → đăng ký callback
+    ///
+    /// SetFoodList() giữ lại để tương thích ngược nhưng không cần gọi nữa.
+    /// OnGridSpawnComplete tự lấy SharedFoodList từ OrderQueue.Instance.
     /// </summary>
     public class FoodTraySpawner : MonoBehaviour
     {
@@ -24,13 +29,6 @@ namespace FoodMatch.Tray
 
         private readonly List<FoodTray> _trays = new();
         private LevelConfig _pendingConfig;
-
-        /// <summary>
-        /// Canonical food list nhận từ OrderQueue.
-        /// Nếu null → fallback về random (không khuyến khích).
-        /// </summary>
-        private IReadOnlyList<FoodItemData> _canonicalFoodList;
-
         private FoodGridSpawner _gridSpawner;
 
         private void Awake()
@@ -41,16 +39,14 @@ namespace FoodMatch.Tray
         }
 
         /// <summary>
-        /// Gọi TRƯỚC SpawnFood() để truyền canonical food list từ OrderQueue.
-        /// LevelManager chịu trách nhiệm gọi theo đúng thứ tự:
-        ///   1. orderQueue.Initialize(config)       → sinh SharedFoodList
-        ///   2. foodTraySpawner.SetFoodList(...)    → inject list vào spawner
-        ///   3. foodTraySpawner.SpawnFood(config)   → bắt đầu spawn
+        /// [DEPRECATED - giữ lại để LevelManager cũ không bị compile error]
+        /// Không cần gọi nữa. FoodTraySpawner tự lấy SharedFoodList
+        /// từ OrderQueue.Instance trong callback.
         /// </summary>
         public void SetFoodList(IReadOnlyList<FoodItemData> canonicalFoodList)
         {
-            _canonicalFoodList = canonicalFoodList;
-            Log($"SetFoodList: nhận {canonicalFoodList?.Count ?? 0} foods từ OrderQueue.");
+            Log("SetFoodList() được gọi — không cần thiết nữa. " +
+                "FoodTraySpawner tự lấy SharedFoodList từ OrderQueue.Instance.");
         }
 
         public void SpawnFood(LevelConfig config)
@@ -71,7 +67,6 @@ namespace FoodMatch.Tray
                 tray?.ClearTray();
             _trays.Clear();
             _pendingConfig = null;
-            _canonicalFoodList = null;
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -100,21 +95,17 @@ namespace FoodMatch.Tray
 
             Log($"Tìm thấy {_trays.Count} FoodTray.");
 
-            // ── Dùng canonical list từ OrderQueue, fallback về random nếu null ──
-            List<FoodItemData> foodList;
-            if (_canonicalFoodList != null && _canonicalFoodList.Count > 0)
-            {
-                // Copy ra list mới để shuffle mà không ảnh hưởng canonical list gốc
-                foodList = new List<FoodItemData>(_canonicalFoodList);
-                ShuffleList(foodList); // Shuffle lại để vị trí spawn trong tray ngẫu nhiên
-                Log($"Dùng canonical food list: {foodList.Count} items.");
-            }
-            else
-            {
-                Debug.LogWarning("[FoodTraySpawner] _canonicalFoodList null! " +
-                                 "Fallback về random. Gọi SetFoodList() trước SpawnFood().");
-                foodList = GenerateRandomFoodList(_pendingConfig);
-            }
+            // ── SOURCE OF TRUTH: lấy trực tiếp từ OrderQueue.Instance ────────
+            // Đây là cách duy nhất đảm bảo FoodTray và OrderTray
+            // dùng chính xác cùng một danh sách với số lượng từng loại đồng nhất.
+            List<FoodItemData> foodList = GetCanonicalFoodListCopy();
+            if (foodList == null) return;
+
+            // Shuffle để vị trí spawn ngẫu nhiên, nhưng TỔNG số lượng từng loại
+            // vẫn giữ nguyên — khớp 100% với OrderQueue.
+            ShuffleList(foodList);
+
+            LogFoodDistribution(foodList);
 
             var distribution = DistributeToTrays(foodList);
 
@@ -136,21 +127,32 @@ namespace FoodMatch.Tray
         // ─────────────────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Fallback: chỉ dùng khi không có canonical list.
-        /// Kết quả sẽ không khớp với OrderQueue — tránh dùng trong production.
+        /// Lấy copy của OrderQueue.Instance.SharedFoodList.
+        /// Copy để shuffle tự do mà không làm thay đổi source of truth.
         /// </summary>
-        private List<FoodItemData> GenerateRandomFoodList(LevelConfig config)
+        private List<FoodItemData> GetCanonicalFoodListCopy()
         {
-            var result = new List<FoodItemData>();
-            var foods = config.availableFoods;
-            if (foods == null || foods.Count == 0) return result;
+            if (OrderQueue.Instance == null)
+            {
+                Debug.LogError("[FoodTraySpawner] OrderQueue.Instance là null! " +
+                               "Đảm bảo OrderQueue tồn tại trong scene.");
+                return null;
+            }
 
-            for (int i = 0; i < config.totalFoodCount; i++)
-                result.Add(foods[Random.Range(0, foods.Count)]);
+            var shared = OrderQueue.Instance.SharedFoodList;
+            if (shared == null || shared.Count == 0)
+            {
+                Debug.LogError("[FoodTraySpawner] OrderQueue.SharedFoodList trống! " +
+                               "Gọi OrderQueue.Initialize(config) trước SpawnFood().");
+                return null;
+            }
 
-            ShuffleList(result);
-            return result;
+            var copy = new List<FoodItemData>(shared);
+            Log($"Lấy canonical list từ OrderQueue: {copy.Count} items.");
+            return copy;
         }
+
+        // ─────────────────────────────────────────────────────────────────────
 
         private List<List<FoodItemData>> DistributeToTrays(List<FoodItemData> foodList)
         {
@@ -182,7 +184,7 @@ namespace FoodMatch.Tray
 
                 if (available.Count == 0)
                 {
-                    Debug.LogWarning($"[FoodTraySpawner] Hết capacity! {remaining} food còn lại.");
+                    Debug.LogWarning($"[FoodTraySpawner] Hết capacity! {remaining} food không được spawn.");
                     break;
                 }
 
@@ -193,6 +195,8 @@ namespace FoodMatch.Tray
             return result;
         }
 
+        // ─────────────────────────────────────────────────────────────────────
+
         private static void ShuffleList<T>(List<T> list)
         {
             for (int i = list.Count - 1; i > 0; i--)
@@ -200,6 +204,22 @@ namespace FoodMatch.Tray
                 int j = Random.Range(0, i + 1);
                 (list[i], list[j]) = (list[j], list[i]);
             }
+        }
+
+        /// <summary>Log số lượng từng loại food để verify đồng nhất với OrderQueue.</summary>
+        private void LogFoodDistribution(List<FoodItemData> foodList)
+        {
+            if (!verboseLog) return;
+            var countMap = new Dictionary<FoodItemData, int>();
+            foreach (var food in foodList)
+            {
+                if (!countMap.ContainsKey(food)) countMap[food] = 0;
+                countMap[food]++;
+            }
+            var sb = new System.Text.StringBuilder("[FoodTraySpawner] Phân bố food:\n");
+            foreach (var kvp in countMap)
+                sb.AppendLine($"  {kvp.Key.name}: {kvp.Value} items = {kvp.Value / 3} orders");
+            Debug.Log(sb.ToString());
         }
 
         private void Log(string msg)

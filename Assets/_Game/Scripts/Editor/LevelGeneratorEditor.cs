@@ -16,13 +16,18 @@ namespace FoodMatch.Editor
         private int _levelCount = 20;
         private bool _clearExisting = false;
 
+        // ── QUAN TRỌNG: phải khớp với FoodTray.anchorsPerLayer trong scene ──
+        // Log cho thấy: 8 trays, mỗi tray 6 anchors, 2 layers → 3 anchors/layer
+        // Nếu FoodTray của bạn có số anchor khác, sửa hằng số này.
+        private const int ANCHORS_PER_LAYER = 3;
+
         private Vector2 _scroll;
 
         [MenuItem("FoodMatch/Level Generator")]
         public static void OpenWindow()
         {
             var window = GetWindow<LevelGeneratorEditor>("Level Generator");
-            window.minSize = new Vector2(480, 520);
+            window.minSize = new Vector2(480, 560);
             window.Show();
         }
 
@@ -49,7 +54,15 @@ namespace FoodMatch.Editor
             EditorGUILayout.LabelField("Settings", EditorStyles.boldLabel);
             _savePath = EditorGUILayout.TextField("Save Path", _savePath);
             _levelCount = EditorGUILayout.IntSlider("Số levels cần tạo", _levelCount, 1, 50);
-            _clearExisting = EditorGUILayout.Toggle(new GUIContent("Xóa levels cũ trước", "Xóa file cũ trước khi tạo mới"), _clearExisting);
+            _clearExisting = EditorGUILayout.Toggle(
+                new GUIContent("Xóa levels cũ trước", "Xóa file cũ trước khi tạo mới"),
+                _clearExisting);
+
+            EditorGUILayout.Space(6);
+            EditorGUILayout.HelpBox(
+                $"ANCHORS_PER_LAYER = {ANCHORS_PER_LAYER}  " +
+                $"(phải khớp FoodTray.anchorsPerLayer trong scene — xem log '[FoodTraySpawner] Tray[x] → N foods')",
+                MessageType.Info);
 
             EditorGUILayout.Space(10);
             DrawHorizontalLine();
@@ -64,18 +77,14 @@ namespace FoodMatch.Editor
 
             GUI.backgroundColor = new Color(0.4f, 0.8f, 0.4f);
             if (GUILayout.Button("✅  TẠO " + _levelCount + " LEVELS", GUILayout.Height(40)))
-            {
                 GenerateLevels();
-            }
             GUI.backgroundColor = Color.white;
 
             EditorGUILayout.Space(5);
 
             GUI.backgroundColor = new Color(0.9f, 0.5f, 0.3f);
             if (GUILayout.Button("🔄  Tự động tìm Database assets", GUILayout.Height(30)))
-            {
                 AutoFindDatabases();
-            }
             GUI.backgroundColor = Color.white;
 
             EditorGUILayout.Space(10);
@@ -99,18 +108,17 @@ namespace FoodMatch.Editor
             ShowTierPreview("🔴 Khó (Lv 13-20)", l13, l20, f13, f20, c13, r13, c20, r20, cu13, cu20, t13, t20);
         }
 
-        private void ShowTierPreview(string label, int lMin, int lMax, int fMin, int fMax, int cMin, int rMin, int cMax, int rMax, int cuMin, int cuMax, int tMin, int tMax)
+        private void ShowTierPreview(string label,
+            int lMin, int lMax, int fMin, int fMax,
+            int cMin, int rMin, int cMax, int rMax,
+            int cuMin, int cuMax, int tMin, int tMax)
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.LabelField(label, EditorStyles.boldLabel);
-            EditorGUILayout.LabelField($"• Layers: {lMin}{(lMin == lMax ? "" : $"-{lMax}")} | Khách: {cuMin}{(cuMin == cuMax ? "" : $"-{cuMax}")}");
-            EditorGUILayout.LabelField($"• Tổng đồ ăn: {fMin} -> {fMax} (Chia hết cho 3)");
-
-            string gridMinStr = $"{cMin}x{rMin}";
-            string gridMaxStr = $"{cMax}x{rMax}";
-            EditorGUILayout.LabelField($"• Kích thước khay (Cột x Hàng): {gridMinStr} -> {gridMaxStr}");
-
-            EditorGUILayout.LabelField($"• Số loại đồ ăn: {tMin} -> {tMax} loại");
+            EditorGUILayout.LabelField($"• Layers: {lMin}{(lMin == lMax ? "" : $"–{lMax}")} | Khách: {cuMin}{(cuMin == cuMax ? "" : $"–{cuMax}")}");
+            EditorGUILayout.LabelField($"• Tổng đồ ăn: {fMin} → {fMax}  (= grid capacity, chia hết cho foodTypes×3)");
+            EditorGUILayout.LabelField($"• Kích thước khay (Col×Row): {cMin}×{rMin} → {cMax}×{rMax}");
+            EditorGUILayout.LabelField($"• Số loại đồ ăn: {tMin} → {tMax} loại");
             EditorGUILayout.EndVertical();
         }
 
@@ -187,60 +195,80 @@ namespace FoodMatch.Editor
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            EditorUtility.DisplayDialog("Hoàn thành!", $"Đã cân bằng và tạo {created} levels!", "OK");
+            EditorUtility.DisplayDialog("Hoàn thành!", $"Đã tạo {created} levels!\n\nMỗi level: totalFood = cols×rows×layers×{ANCHORS_PER_LAYER}", "OK");
         }
 
-        // ─── THUẬT TOÁN CÂN BẰNG GRID ĐÃ SỬA LẠI (TĂNG ĐỀU) ───────────────────
-        private void GetLevelStats(int levelIndex, int maxDbFoods, out int totalFood, out int layers, out int cols, out int rows, out int customers, out int foodTypes)
-        {
-            // 1. Số đồ ăn
-            float rawFoodCount = 30f * Mathf.Pow(1.15f, levelIndex - 1);
-            totalFood = Mathf.RoundToInt(rawFoodCount);
-            int remainder = totalFood % 3;
-            if (remainder == 1) totalFood -= 1;
-            else if (remainder == 2) totalFood += 1;
+        // ═════════════════════════════════════════════════════════════════════
+        //  THUẬT TOÁN CHÍNH — totalFood tính NGƯỢC từ grid capacity thực tế
+        // ═════════════════════════════════════════════════════════════════════
 
-            // 2. Phân loại theo Level
+        /// <summary>
+        /// FIX HOÀN TOÀN: totalFood KHÔNG còn tính từ công thức tăng dần rồi fit vào grid.
+        ///
+        /// Thay vào đó:
+        ///   1. Tính grid size (cols, rows) tăng dần theo level
+        ///   2. Tính grid capacity thực tế = cols × rows × layers × ANCHORS_PER_LAYER
+        ///   3. totalFood = làm tròn XUỐNG capacity về bội số của (foodTypes × 3)
+        ///      → đảm bảo: totalFood ≤ capacity (không bao giờ thừa)
+        ///                  totalFood % (foodTypes×3) = 0 (chia đều từng loại)
+        ///
+        /// Ví dụ Level 5: cols=4, rows=2, layers=2, anchors=3
+        ///   capacity = 4×2×2×3 = 48
+        ///   foodTypes=5, divisor=15 → totalFood = floor(48/15)×15 = 3×15 = 45
+        ///   → 5 loại × 9 food/loại = 45 ✅  (9/3=3 orders/loại)
+        /// </summary>
+        private void GetLevelStats(int levelIndex, int maxDbFoods,
+            out int totalFood, out int layers, out int cols, out int rows,
+            out int customers, out int foodTypes)
+        {
+            // ── 1. Tier: layers & customers ───────────────────────────────────
             if (levelIndex <= 5) { layers = 2; customers = 1; }
             else if (levelIndex <= 12) { layers = 3; customers = 2; }
             else { layers = 4; customers = 2; }
 
-            // 3. Setup Kích thước Grid siêu nén (Bắt đầu từ 4x2)
-            cols = 4;
-            rows = 2;
+            // ── 2. Grid size tăng dần theo level ─────────────────────────────
+            // Bắt đầu từ 4×2 (nhỏ nhất), tăng đều lên đến 6×4 (lớn nhất)
+            // Sử dụng bảng cố định để kiểm soát độ khó rõ ràng hơn công thức
+            GetGridSize(levelIndex, out cols, out rows);
 
-            // Giả định 1 layer trong 1 box có thể nhồi được tối đa ~4 món ăn.
-            // Sức chứa của 1 box = số layer * 4.
-            int maxItemsPerBox = layers * 4;
+            // ── 3. Capacity thực tế của grid ─────────────────────────────────
+            // Đây là SỐ LƯỢNG FOOD TỐI ĐA mà FoodTray có thể chứa
+            // ANCHORS_PER_LAYER phải khớp với FoodTray prefab trong scene
+            int gridCapacity = cols * rows * layers * ANCHORS_PER_LAYER;
 
-            // Cờ để luân phiên tăng: true = tăng cột, false = tăng hàng
-            bool expandColNext = true;
+            // ── 4. foodTypes ──────────────────────────────────────────────────
+            // Tính dựa trên capacity để tỉ lệ loại/food hợp lý
+            int idealTypes = Mathf.Max(3, gridCapacity / 9);
+            foodTypes = Mathf.Clamp(idealTypes, 3, maxDbFoods);
 
-            // Vòng lặp: Luân phiên nới rộng cột và hàng khi tổng đồ ăn vượt quá sức chứa
-            while (true)
-            {
-                int currentCapacity = cols * rows * maxItemsPerBox;
+            // ── 5. totalFood = FLOOR capacity về bội số của (foodTypes × 3) ──
+            // Làm tròn XUỐNG (không phải lên) để đảm bảo totalFood ≤ gridCapacity
+            int divisor = foodTypes * 3;
+            totalFood = (gridCapacity / divisor) * divisor;
 
-                if (totalFood <= currentCapacity) break; // Đã đủ sức chứa
-                if (cols >= 6 && rows >= 4) break;       // Chạm trần kích thước khay 6x4
+            // Đảm bảo có ít nhất 1 bộ đầy đủ (tối thiểu = divisor)
+            if (totalFood < divisor)
+                totalFood = divisor;
+        }
 
-                if (expandColNext)
-                {
-                    if (cols < 6) cols++;
-                    else if (rows < 4) rows++; // Chữa cháy nếu cột đã max mà hàng vẫn còn tăng được
-                }
-                else
-                {
-                    if (rows < 4) rows++;
-                    else if (cols < 6) cols++; // Chữa cháy nếu hàng đã max mà cột vẫn còn tăng được
-                }
-
-                expandColNext = !expandColNext; // Đảo lượt
-            }
-
-            // 4. Số loại đồ ăn
-            int idealTypes = Mathf.Max(3, totalFood / 9);
-            foodTypes = Mathf.Min(idealTypes, maxDbFoods);
+        /// <summary>
+        /// Grid size tăng dần theo level.
+        /// Dùng bảng cố định để đảm bảo kiểm soát được độ khó.
+        ///
+        /// Level  1– 3: 4×2 = 8  cells (nhỏ nhất)
+        /// Level  4– 6: 5×2 = 10 cells
+        /// Level  7– 9: 5×3 = 15 cells
+        /// Level 10–12: 6×3 = 18 cells
+        /// Level 13–15: 6×4 = 24 cells (lớn nhất)
+        /// Level 16–20: 6×4 = 24 cells (giữ nguyên, tăng độ khó qua layers)
+        /// </summary>
+        private static void GetGridSize(int levelIndex, out int cols, out int rows)
+        {
+            if (levelIndex <= 3) { cols = 4; rows = 2; }
+            else if (levelIndex <= 6) { cols = 5; rows = 2; }
+            else if (levelIndex <= 9) { cols = 5; rows = 3; }
+            else if (levelIndex <= 12) { cols = 6; rows = 3; }
+            else { cols = 6; rows = 4; }
         }
 
         private LevelConfig CreateLevelConfig(int index)
@@ -249,13 +277,15 @@ namespace FoodMatch.Editor
             config.levelIndex = index;
             int maxFoodTypes = _foodDb != null ? _foodDb.allFoods.Count : 10;
 
-            GetLevelStats(index, maxFoodTypes, out int totalFood, out int layers, out int cols, out int rows, out int Orders, out int types);
+            GetLevelStats(index, maxFoodTypes,
+                out int totalFood, out int layers, out int cols, out int rows,
+                out int orders, out int types);
 
             config.totalFoodCount = totalFood;
             config.layerCount = layers;
             config.trayColumns = cols;
             config.trayRows = rows;
-            config.maxActiveOrders = Orders;
+            config.maxActiveOrders = orders;
             config.backupTrayCapacity = 5;
             config.timeLimitSeconds = 0f;
 
@@ -264,9 +294,13 @@ namespace FoodMatch.Editor
             else config.levelDisplayName = GetHardLevelName(index);
 
             if (_foodDb != null && _foodDb.allFoods.Count > 0)
-            {
                 config.availableFoods = _foodDb.allFoods.GetRange(0, types);
-            }
+
+            // Log để verify
+            int capacity = cols * rows * layers * ANCHORS_PER_LAYER;
+            Debug.Log($"[LevelGen] Level {index:D2}: grid={cols}×{rows} layers={layers} " +
+                      $"capacity={capacity} totalFood={totalFood} types={types} " +
+                      $"(food/type={totalFood / types} orders/type={totalFood / types / 3})");
 
             return config;
         }
@@ -293,9 +327,7 @@ namespace FoodMatch.Editor
         {
             string[] guids = AssetDatabase.FindAssets("t:LevelConfig", new[] { _savePath });
             foreach (string guid in guids)
-            {
                 AssetDatabase.DeleteAsset(AssetDatabase.GUIDToAssetPath(guid));
-            }
             AssetDatabase.Refresh();
         }
     }

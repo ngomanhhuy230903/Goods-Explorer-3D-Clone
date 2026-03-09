@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 361ce6f39e3f10642ba326fd65d82e48, type: 3}
-  m_Name: Level_04
+  m_Name: 
   m_EditorClassIdentifier: 
   levelIndex: 4
   levelDisplayName: Lunch Break
@@ -20,10 +20,11 @@ MonoBehaviour:
   - {fileID: 11400000, guid: b596eb1b196f40d43875093f91dccc44, type: 2}
   - {fileID: 11400000, guid: 38037827fc24ccd43ba648e802edca91, type: 2}
   - {fileID: 11400000, guid: f3d8108444721da41930fe1572e141e4, type: 2}
-  totalFoodCount: 45
+  - {fileID: 11400000, guid: 9cddf89ff4e19a14e882b9635dc24ccd, type: 2}
+  totalFoodCount: 54
   layerCount: 2
-  trayColumns: 4
+  trayColumns: 5
   trayRows: 2
-  maxActiveOrders: 2
+  maxActiveOrders: 1
   backupTrayCapacity: 5
   timeLimitSeconds: 0

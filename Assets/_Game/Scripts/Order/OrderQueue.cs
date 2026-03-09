@@ -8,14 +8,13 @@ using FoodMatch.Data;
 namespace FoodMatch.Order
 {
     // ═══════════════════════════════════════════════════════════════════════════
-    //  STRATEGY PATTERN – Layout algorithm có thể swap lúc runtime
+    //  STRATEGY PATTERN
     // ═══════════════════════════════════════════════════════════════════════════
     public interface ILayoutStrategy
     {
         Vector2 CalculatePosition(int index, int totalCount);
     }
 
-    /// <summary>Trải đều các tray ngang màn hình.</summary>
     public sealed class HorizontalCenterLayout : ILayoutStrategy
     {
         private readonly float _spacing;
@@ -31,7 +30,7 @@ namespace FoodMatch.Order
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    //  BUILDER PATTERN – Xây dựng OrderData an toàn
+    //  BUILDER PATTERN
     // ═══════════════════════════════════════════════════════════════════════════
     public sealed class OrderDataBuilder
     {
@@ -47,17 +46,13 @@ namespace FoodMatch.Order
         }
     }
 
-    /// <summary>
-    /// Lưu trữ vị trí cố định của từng slot. Slot không thay đổi vị trí
-    /// khi tray hoàn thành → food bay không bị lệch.
-    /// </summary>
     public sealed class SlotRegistry
     {
-        private readonly Dictionary<int, Vector2> _slotPositions = new Dictionary<int, Vector2>();
-        private readonly Dictionary<int, OrderTray> _slotOccupants = new Dictionary<int, OrderTray>();
+        private readonly Dictionary<int, Vector2> _slotPositions = new();
+        private readonly Dictionary<int, OrderTray> _slotOccupants = new();
         private int _totalSlots = 0;
 
-        public void PreAllocateSlots(int count, System.Func<int, Vector2> positionFactory)
+        public void PreAllocateSlots(int count, Func<int, Vector2> positionFactory)
         {
             Clear();
             _totalSlots = count;
@@ -69,7 +64,7 @@ namespace FoodMatch.Order
         {
             if (!_slotPositions.ContainsKey(slotIdx))
             {
-                UnityEngine.Debug.LogError($"[SlotRegistry] Slot {slotIdx} chưa được pre-allocate!");
+                Debug.LogError($"[SlotRegistry] Slot {slotIdx} chưa được pre-allocate!");
                 return;
             }
             _slotOccupants[slotIdx] = tray;
@@ -102,22 +97,17 @@ namespace FoodMatch.Order
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    //  INTERFACE – cho FoodFlowController extension method (Dependency Inversion)
+    //  INTERFACE
     // ═══════════════════════════════════════════════════════════════════════════
-
-    /// <summary>
-    /// OrderQueue implement interface này để FoodFlowController có thể gọi
-    /// TryMatchFoodWithReservation() mà không phụ thuộc concrete class.
-    /// </summary>
     public interface IOrderTrayProvider
     {
         IReadOnlyList<OrderTray> GetActiveTrays();
     }
 
-    /// <summary>
-    /// Quản lý toàn bộ vòng đời OrderTray.
-    /// </summary>
-    public class OrderQueue : MonoBehaviour, IOrderTrayProvider  // ← THÊM IOrderTrayProvider
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  ORDER QUEUE
+    // ═══════════════════════════════════════════════════════════════════════════
+    public class OrderQueue : MonoBehaviour, IOrderTrayProvider
     {
         // ── Singleton ────────────────────────────────────────────────────────
         public static OrderQueue Instance { get; private set; }
@@ -136,26 +126,29 @@ namespace FoodMatch.Order
         [Header("─── Debug ───────────────────────────")]
         [SerializeField] private bool showDebugLog = true;
 
-        // ── Dependencies (injected via Strategy) ─────────────────────────────
+        // ── Dependencies ─────────────────────────────────────────────────────
         private ILayoutStrategy _layout;
         private SlotRegistry _slotRegistry;
 
         // ── Runtime ──────────────────────────────────────────────────────────
-        private readonly List<OrderTray> _activeTrays = new List<OrderTray>();
-        private readonly Queue<OrderData> _pendingOrders = new Queue<OrderData>();
+        private readonly List<OrderTray> _activeTrays = new();
+        private readonly Queue<OrderData> _pendingOrders = new();
 
         private int _maxActiveOrders;
         private int _totalOrderCount;
         private int _completedOrderCount;
         private bool _isInitialized;
 
+        /// <summary>
+        /// SOURCE OF TRUTH: danh sách food chuẩn được dùng bởi cả OrderQueue và FoodTray.
+        /// FoodTraySpawner lấy copy của list này qua OrderQueue.Instance.SharedFoodList.
+        /// </summary>
         public IReadOnlyList<FoodItemData> SharedFoodList { get; private set; }
 
         // ── IOrderTrayProvider ────────────────────────────────────────────────
-        /// <summary>Expose active trays cho extension TryMatchFoodWithReservation.</summary>
         public IReadOnlyList<OrderTray> GetActiveTrays() => _activeTrays;
 
-        // ── Observer (EventBus subscriptions) ────────────────────────────────
+        // ── EventBus ─────────────────────────────────────────────────────────
         private void OnEnable()
         {
             EventBus.OnOrderCompleted += HandleOrderCompleted;
@@ -182,6 +175,9 @@ namespace FoodMatch.Order
             _completedOrderCount = 0;
             _maxActiveOrders = config.maxActiveOrders;
 
+            // ── Build canonical food list ─────────────────────────────────────
+            // Đây là SOURCE OF TRUTH duy nhất.
+            // FoodTraySpawner sẽ lấy ĐÚNG list này qua SharedFoodList.
             var canonicalList = BuildCanonicalFoodList(config);
             SharedFoodList = canonicalList.AsReadOnly();
 
@@ -194,48 +190,31 @@ namespace FoodMatch.Order
             _slotRegistry.PreAllocateSlots(_maxActiveOrders,
                 idx => _layout.CalculatePosition(idx, _maxActiveOrders));
 
-            // Xóa reservation cũ khi bắt đầu level mới
             SlotReservationRegistry.Instance.ClearAll();
-
             FillActiveSlots();
 
             Log($"Init: {_totalOrderCount} orders | {canonicalList.Count} foods | max={_maxActiveOrders}");
         }
 
-        /// <summary>
-        /// Match food với active tray — reservation-aware.
-        /// FIX CS1061: đổi tray.TryMatch() → tray.TryMatchAndReserve() với instanceId=0
-        /// (backward-compat: instanceId=0 khi không cần track ai reserve).
-        /// </summary>
         public MatchResult TryMatchFood(int foodID)
         {
             if (!_isInitialized) return MatchResult.NoMatch();
-
             foreach (var tray in _activeTrays)
-                // FIX: TryMatch không còn tồn tại → dùng TryMatchAndReserve(foodID, 0, out slot)
                 if (tray.TryMatchAndReserve(foodID, 0, out int slotIndex))
                     return MatchResult.Matched(tray, slotIndex);
-
             return MatchResult.NoMatch();
         }
 
-        /// <summary>
-        /// Match + reserve slot ngay lập tức (atomic) — tránh race condition.
-        /// FoodFlowController gọi method này thay vì TryMatchFood() cũ.
-        /// </summary>
         public MatchResult TryMatchFoodWithReservation(int foodID, int foodInstanceId)
         {
             if (!_isInitialized) return MatchResult.NoMatch();
-
             foreach (var tray in _activeTrays)
             {
                 if (tray == null) continue;
                 if (tray.CurrentStateId != OrderTrayStateId.Active) continue;
-
                 if (tray.TryMatchAndReserve(foodID, foodInstanceId, out int slotIndex))
                     return MatchResult.Matched(tray, slotIndex);
             }
-
             return MatchResult.NoMatch();
         }
 
@@ -259,26 +238,52 @@ namespace FoodMatch.Order
         //  FOOD LIST GENERATION
         // ═════════════════════════════════════════════════════════════════════
 
+        /// <summary>
+        /// Xây dựng canonical food list từ config.
+        ///
+        /// QUAN TRỌNG: config.totalFoodCount đã được LevelGeneratorEditor tính
+        /// sao cho totalFood = (gridCapacity / divisor) * divisor
+        /// với divisor = foodTypes * 3 → chia đều hoàn toàn, không bao giờ thừa capacity.
+        ///
+        /// Ở đây chỉ cần tin vào totalFood và chia đều theo typeCount.
+        /// Nếu vì lý do nào totalFood không chia hết cho typeCount*3
+        /// (ví dụ config cũ chưa gen lại), tự điều chỉnh xuống để an toàn.
+        /// </summary>
         private List<FoodItemData> BuildCanonicalFoodList(LevelConfig config)
         {
             var result = new List<FoodItemData>();
             int typeCount = config.availableFoods.Count;
 
-            if (typeCount == 0) { Debug.LogError("[OrderQueue] availableFoods trống!"); return result; }
-
-            int orderCount = config.totalFoodCount / 3;
-            int basePerType = orderCount / typeCount;
-            int remainder = orderCount % typeCount;
-
-            for (int i = 0; i < typeCount; i++)
+            if (typeCount == 0)
             {
-                int ordersForType = basePerType + (i < remainder ? 1 : 0);
-                for (int j = 0; j < ordersForType * 3; j++)
-                    result.Add(config.availableFoods[i]);
+                Debug.LogError("[OrderQueue] availableFoods trống!");
+                return result;
             }
 
+            int totalFood = config.totalFoodCount;
+            int divisor = typeCount * 3;
+
+            // Làm tròn XUỐNG để đảm bảo totalFood ≤ capacity
+            // (nếu config đã đúng thì totalFood % divisor == 0, không thay đổi gì)
+            if (totalFood % divisor != 0)
+            {
+                int corrected = (totalFood / divisor) * divisor;
+                Debug.LogWarning($"[OrderQueue] totalFood={totalFood} không chia hết cho " +
+                                 $"typeCount*3={divisor}. Làm tròn XUỐNG thành {corrected}. " +
+                                 $"Hãy gen lại LevelConfig bằng LevelGeneratorEditor!");
+                totalFood = Mathf.Max(divisor, corrected);
+            }
+
+            // Mỗi loại có đúng foodPerType items — chia đều tuyệt đối
+            int foodPerType = totalFood / typeCount;
+
+            for (int i = 0; i < typeCount; i++)
+                for (int j = 0; j < foodPerType; j++)
+                    result.Add(config.availableFoods[i]);
+
             ShuffleList(result);
-            Log($"BuildCanonical: {result.Count} foods / {typeCount} types | base={basePerType} rem={remainder}");
+            Log($"BuildCanonical: {result.Count} foods / {typeCount} types / " +
+                $"{foodPerType} mỗi loại / {foodPerType / 3} orders mỗi loại");
             return result;
         }
 
@@ -294,14 +299,12 @@ namespace FoodMatch.Order
             var orders = new List<OrderData>();
             foreach (var kvp in countMap)
             {
-                int orderCountForType = kvp.Value / 3;
-                for (int i = 0; i < orderCountForType; i++)
-                {
+                int orderCount = kvp.Value / 3;
+                for (int i = 0; i < orderCount; i++)
                     orders.Add(new OrderDataBuilder()
                         .WithFood(kvp.Key)
                         .WithRequired(3)
                         .Build());
-                }
             }
 
             ShuffleList(orders);
@@ -311,7 +314,6 @@ namespace FoodMatch.Order
         private void FillActiveSlots()
         {
             var freeSlots = _slotRegistry.GetFreeSlotIndicesSorted();
-
             int toFill = Mathf.Min(freeSlots.Count, _pendingOrders.Count);
             if (toFill == 0) return;
 
@@ -319,8 +321,7 @@ namespace FoodMatch.Order
             {
                 int slotIdx = freeSlots[i];
                 _slotRegistry.TryGetPosition(slotIdx, out Vector2 targetPos);
-                var orderData = _pendingOrders.Dequeue();
-                SpawnOrderTray(orderData, slotIdx, targetPos);
+                SpawnOrderTray(_pendingOrders.Dequeue(), slotIdx, targetPos);
             }
         }
 
@@ -335,7 +336,6 @@ namespace FoodMatch.Order
             if (tray == null) { Debug.LogError("[OrderQueue] Thiếu component OrderTray!"); return; }
 
             _slotRegistry.OccupySlot(slotIdx, tray);
-
             SubscribeTray(tray);
             _activeTrays.Add(tray);
 
@@ -352,10 +352,7 @@ namespace FoodMatch.Order
             _completedOrderCount++;
             Log($"Order done [{_completedOrderCount}/{_totalOrderCount}]");
 
-            bool allDone = _completedOrderCount >= _totalOrderCount
-                        && _pendingOrders.Count == 0;
-
-            if (allDone)
+            if (_completedOrderCount >= _totalOrderCount && _pendingOrders.Count == 0)
             {
                 Log("ALL ORDERS COMPLETED → WIN!");
                 EventBus.RaiseAllOrdersCompleted();
@@ -366,14 +363,9 @@ namespace FoodMatch.Order
         {
             UnsubscribeTray(tray);
             _activeTrays.Remove(tray);
-
-            // Xóa reservation còn lại của tray này
             SlotReservationRegistry.Instance.ClearOrderTray(tray.TrayIndex);
-
             _slotRegistry.FreeSlot(tray.TrayIndex);
-
-            if (_pendingOrders.Count > 0)
-                FillActiveSlots();
+            if (_pendingOrders.Count > 0) FillActiveSlots();
         }
 
         private void HandleOrderCompleted(int trayIndex) =>
