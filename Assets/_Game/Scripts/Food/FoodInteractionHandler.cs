@@ -2,20 +2,12 @@
 using UnityEngine.EventSystems;
 using DG.Tweening;
 using FoodMatch.Food;
+using FoodMatch.Tray;
 
 namespace FoodMatch.Food
 {
     /// <summary>
     /// Xử lý tap/click trên FoodItem.
-    ///
-    /// THAY ĐỔI: Dùng IPointerClickHandler thay OnMouseDown.
-    /// Lý do: Canvas "Screen Space - Camera" dùng Graphic Raycaster,
-    /// nên input phải đi qua EventSystem — OnMouseDown không nhận được.
-    ///
-    /// ════ SETUP BẮT BUỘC ════════════════════════════════════════════
-    ///  Main Camera → Add Component → Physics Raycaster
-    ///  (Để EventSystem có thể raycast vào Collider 3D của food)
-    /// ═══════════════════════════════════════════════════════════════
     /// </summary>
     [RequireComponent(typeof(Collider))]
     public class FoodInteractionHandler : MonoBehaviour,
@@ -35,10 +27,29 @@ namespace FoodMatch.Food
             _originalScale = transform.localScale;
         }
 
+        // ─── Helper: thông báo tray dừng auto-rotate ──────────────────────────
+        private void NotifyTrayInteraction()
+        {
+            // Tìm FoodGridSpawner từ OwnerTray nếu có, hoặc tìm trong scene
+            FoodGridSpawner spawner = null;
+
+            if (_foodItem != null && _foodItem.OwnerTray != null)
+                spawner = _foodItem.OwnerTray.GetComponentInChildren<FoodGridSpawner>();
+
+            if (spawner == null)
+                spawner = FindObjectOfType<FoodGridSpawner>();
+
+            spawner?.NotifyInteraction();
+        }
+
         // ─── IPointerDownHandler — press feedback ─────────────────────────────
         public void OnPointerDown(PointerEventData eventData)
         {
             if (_isProcessing) return;
+
+            // Ngay khi chạm → dừng auto-rotate
+            NotifyTrayInteraction();
+
             transform.DOKill();
             transform.DOScale(_originalScale * 0.88f, 0.08f).SetEase(Ease.OutQuad).SetUpdate(true);
         }
