@@ -60,6 +60,7 @@ namespace FoodMatch.Order
 
         public void OnDespawn()
         {
+            DOTween.Kill(gameObject);
             _rectTransform.DOKill();
             OrderData = null;
             foreach (var slot in slots) slot.ResetSlot();
@@ -172,14 +173,12 @@ namespace FoodMatch.Order
                 .SetLoops(-1, LoopType.Yoyo)
                 .SetUpdate(true);
 
-            // ── THÊM MỚI: Thông báo để FoodFlowController scan BackupTray ──
-            // Delay nhỏ để đảm bảo tray đã settle vào đúng vị trí trước khi
-            // food bay từ BackupTray lên (tránh food bay đến vị trí cũ)
             if (OrderData != null)
             {
                 DOVirtual.DelayedCall(0.1f,
                     () => EventBus.RaiseNewOrderActive(OrderData.FoodID),
-                    false);
+                    false)
+                    .SetTarget(gameObject);
             }
         }
 
@@ -193,7 +192,8 @@ namespace FoodMatch.Order
             OnCompleted?.Invoke(this);
             EventBus.RaiseOrderCompleted(TrayIndex);
 
-            DOVirtual.DelayedCall(0.7f, () => ChangeState(OrderState.Leaving), false);
+            DOVirtual.DelayedCall(0.7f, () => ChangeState(OrderState.Leaving), false)
+    .SetTarget(gameObject);
         }
 
         private void OnEnterLeaving()

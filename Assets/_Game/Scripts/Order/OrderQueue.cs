@@ -107,7 +107,11 @@ namespace FoodMatch.Order
         public void Reset()
         {
             foreach (var tray in _activeTrays)
+            {
+                tray.OnCompleted -= OnTrayCompleted;
+                tray.OnLeft -= OnTrayLeft;     
                 PoolManager.Instance.ReturnOrder(tray.gameObject);
+            }
 
             _activeTrays.Clear();
             _pendingOrders.Clear();

@@ -50,13 +50,44 @@ namespace FoodMatch.Level
             Instance = this;
         }
 
-        private void OnEnable() => GameManager.OnGameStateChanged += HandleGameStateChanged;
-        private void OnDisable() => GameManager.OnGameStateChanged -= HandleGameStateChanged;
+        private void OnEnable()
+        {
+            GameManager.OnGameStateChanged += HandleGameStateChanged;
+        }
+
+        private void OnDisable()
+        {
+            GameManager.OnGameStateChanged -= HandleGameStateChanged;
+        }
 
         private void HandleGameStateChanged(GameState state)
         {
             if (state == GameState.LoadLevel)
                 LoadLevel(CurrentLevelIndex);
+            else if (state == GameState.Win || state == GameState.Lose)
+            {
+                // Cleanup ngay khi Win/Lose để food biến mất trước khi popup hiện
+                FoodFlowController.Instance?.ResetDependencies();
+                backupTray?.ClearAllFood();
+                foodTraySpawner?.ClearFood();
+                orderQueue?.Reset();
+                foodGridSpawner?.ClearGrid();
+            }
+        }
+
+        /// <summary>
+        /// Ẩn/cleanup tất cả gameplay objects khi Win/Lose.
+        /// KHÔNG reset hoàn toàn — chỉ ẩn visual. Reset thật sự xảy ra ở ResetAllSystems().
+        /// </summary>
+        private void CleanupGameplayObjects()
+        {
+            // Stop food fly animations
+            FoodFlowController.Instance?.ResetDependencies();
+
+            // Return food về pool (ẩn khỏi màn hình)
+            backupTray?.ClearAllFood();
+            foodTraySpawner?.ClearFood();
+            foodGridSpawner?.ClearGrid();
         }
 
         // ─── Public API ───────────────────────────────────────────────────────
@@ -191,11 +222,10 @@ namespace FoodMatch.Level
         private void ResetAllSystems()
         {
             FoodFlowController.Instance?.ResetDependencies();
-
-            orderQueue?.Reset();           // SharedFoodList được clear về null
             backupTray?.ClearAllFood();
-            foodGridSpawner?.ClearGrid();
-            foodTraySpawner?.ClearFood();  // _canonicalFoodList được clear về null
+            foodTraySpawner?.ClearFood();  // ← THÊM VÀO ĐÂY, trước ClearGrid
+            orderQueue?.Reset();
+            foodGridSpawner?.ClearGrid();  // ← SAU CÙNG
         }
 
         // ─── Debug ────────────────────────────────────────────────────────────

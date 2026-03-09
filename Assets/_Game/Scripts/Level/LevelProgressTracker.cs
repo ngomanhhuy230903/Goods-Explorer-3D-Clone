@@ -40,13 +40,13 @@ namespace FoodMatch.Level
             _foodDelivered = 0;
             _ordersCompleted = 0;
 
-            // totalFoodCount / 3 = số order
             _totalOrders = config.totalFoodCount / GameConstants.FOOD_SET_SIZE;
 
             Debug.Log($"[LevelProgressTracker] Level {config.levelIndex} bắt đầu. " +
                       $"Tổng món: {config.totalFoodCount} | " +
                       $"Tổng order: {_totalOrders}");
 
+            UnsubscribeEvents();
             SubscribeEvents();
         }
 
