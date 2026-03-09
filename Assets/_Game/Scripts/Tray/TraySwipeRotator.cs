@@ -2,11 +2,11 @@
 using UnityEngine.EventSystems;
 using DG.Tweening;
 using FoodMatch.Tray;
+using FoodMatch.Level;   // GameState
 
 namespace FoodMatch.Tray
 {
     /// <summary>
-    /// Gắn vào một invisible hit-area (UI Panel hoặc Collider) phủ lên khu vực tray.
     /// Cho phép player vuốt ngang để xoay CellContainer.
     /// Tự động thông báo FoodGridSpawner dừng auto-rotate khi có tương tác.
     /// </summary>
@@ -34,18 +34,55 @@ namespace FoodMatch.Tray
         [SerializeField] private float maxInertiaSpeed = 360f;
 
         // ─── Runtime ──────────────────────────────────────────────────────────
-        private Transform _cellContainer;
+        // Không cache cellContainer — luôn lấy fresh qua property
         private bool _isDragging = false;
         private float _lastDragX = 0f;
-        private float _inertiaSpeed = 0f;   // độ/giây, dương = xoay phải
+        private float _inertiaSpeed = 0f;
         private float _totalDragDelta = 0f;
 
+        /// <summary>
+        /// Luôn lấy fresh CellContainer từ spawner mỗi lần dùng.
+        /// Tránh stale reference sau ClearGrid() / SpawnGrid().
+        /// </summary>
+        private Transform CellContainer => spawner?.GetCellContainer();
+
         // ─────────────────────────────────────────────────────────────────────
+
         private void Awake()
         {
             if (spawner == null)
                 spawner = FindObjectOfType<FoodGridSpawner>();
         }
+
+        private void OnEnable()
+        {
+            GameManager.OnGameStateChanged += HandleGameStateChanged;
+        }
+
+        private void OnDisable()
+        {
+            GameManager.OnGameStateChanged -= HandleGameStateChanged;
+        }
+
+        /// <summary>
+        /// Khi LoadLevel (bao gồm Try Again): reset toàn bộ swipe state.
+        /// Đảm bảo không còn _isDragging hay _inertiaSpeed stale từ session trước.
+        /// </summary>
+        private void HandleGameStateChanged(GameState state)
+        {
+            if (state == GameState.LoadLevel)
+                ResetSwipeState();
+        }
+
+        private void ResetSwipeState()
+        {
+            _isDragging = false;
+            _lastDragX = 0f;
+            _inertiaSpeed = 0f;
+            _totalDragDelta = 0f;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
 
         private void Update()
         {
@@ -54,14 +91,13 @@ namespace FoodMatch.Tray
             // Inertia sau khi nhả tay
             if (!Mathf.Approximately(_inertiaSpeed, 0f))
             {
-                _cellContainer = spawner?.GetCellContainer();
-                if (_cellContainer != null)
-                    _cellContainer.Rotate(Vector3.up, _inertiaSpeed * Time.deltaTime, Space.World);
+                var container = CellContainer;
+                if (container != null)
+                    container.Rotate(Vector3.up, _inertiaSpeed * Time.deltaTime, Space.World);
 
                 _inertiaSpeed = Mathf.MoveTowards(
                     _inertiaSpeed, 0f, inertiaDecay * Mathf.Abs(_inertiaSpeed) * Time.deltaTime);
 
-                // Dưới ngưỡng nhỏ → snap về 0
                 if (Mathf.Abs(_inertiaSpeed) < 0.5f)
                     _inertiaSpeed = 0f;
             }
@@ -88,20 +124,15 @@ namespace FoodMatch.Tray
             _totalDragDelta += Mathf.Abs(deltaX);
             _lastDragX = eventData.position.x;
 
-            // Bỏ qua nếu chưa vượt ngưỡng swipe
             if (_totalDragDelta < swipeThreshold) return;
 
-            _cellContainer = spawner?.GetCellContainer();
-            if (_cellContainer == null) return;
+            var container = CellContainer;
+            if (container == null) return;
 
-            float degrees = deltaX * degreesPerPixel;
-            _cellContainer.Rotate(Vector3.up, degrees, Space.World);
+            float degrees = -deltaX * degreesPerPixel;
+            container.Rotate(Vector3.up, degrees, Space.World);
 
-            // Tính inertia tức thời (làm mượt qua Time.deltaTime)
-            float instantSpeed = (Time.deltaTime > 0f)
-                ? (degrees / Time.deltaTime)
-                : 0f;
-
+            float instantSpeed = (Time.deltaTime > 0f) ? (degrees / Time.deltaTime) : 0f;
             _inertiaSpeed = Mathf.Clamp(instantSpeed, -maxInertiaSpeed, maxInertiaSpeed);
         }
 
@@ -109,11 +140,8 @@ namespace FoodMatch.Tray
         {
             _isDragging = false;
 
-            // Nếu chỉ tap (không vuốt) → không có inertia, reset
             if (_totalDragDelta < swipeThreshold)
                 _inertiaSpeed = 0f;
-
-            // Tiếp tục inertia tự nhiên (xử lý trong Update)
         }
 
         // ─── Public ───────────────────────────────────────────────────────────

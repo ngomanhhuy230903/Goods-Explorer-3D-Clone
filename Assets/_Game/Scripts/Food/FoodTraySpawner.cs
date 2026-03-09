@@ -95,9 +95,6 @@ namespace FoodMatch.Tray
 
             Log($"Tìm thấy {_trays.Count} FoodTray.");
 
-            // ── SOURCE OF TRUTH: lấy trực tiếp từ OrderQueue.Instance ────────
-            // Đây là cách duy nhất đảm bảo FoodTray và OrderTray
-            // dùng chính xác cùng một danh sách với số lượng từng loại đồng nhất.
             List<FoodItemData> foodList = GetCanonicalFoodListCopy();
             if (foodList == null) return;
 
