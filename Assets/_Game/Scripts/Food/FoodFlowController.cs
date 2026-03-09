@@ -19,6 +19,8 @@ namespace FoodMatch.Food
     ///   2. Scale = prefabScale × multiplier (có thể chỉnh trong Inspector).
     ///      VD: prefab scale (10,10,10) × 0.85 = (8.5,8.5,8.5).
     ///   3. BackupTray snap food về đúng anchor sau khi bay xong.
+    ///
+    /// FIX CS1061: tray.State → tray.CurrentStateId (OrderTrayStateId enum)
     /// </summary>
     public class FoodFlowController : MonoBehaviour
     {
@@ -54,8 +56,6 @@ namespace FoodMatch.Food
         private OrderQueue _orderQueue;
         private BackupTray _backupTray;
         private bool _isReady = false;
-
-        // Guard tránh auto-match chạy đồng thời nhiều lần
         private bool _isAutoMatching = false;
 
         // ─────────────────────────────────────────────────────────────────────
@@ -65,21 +65,9 @@ namespace FoodMatch.Food
             Instance = this;
         }
 
-        private void OnEnable()
-        {
-            // Lắng nghe event order mới để tự động scan BackupTray
-            EventBus.OnNewOrderActive += HandleNewOrderActive;
-        }
-
-        private void OnDisable()
-        {
-            EventBus.OnNewOrderActive -= HandleNewOrderActive;
-        }
-
-        private void OnDestroy()
-        {
-            if (Instance == this) Instance = null;
-        }
+        private void OnEnable() => EventBus.OnNewOrderActive += HandleNewOrderActive;
+        private void OnDisable() => EventBus.OnNewOrderActive -= HandleNewOrderActive;
+        private void OnDestroy() { if (Instance == this) Instance = null; }
 
         // ─── Dependency Injection ─────────────────────────────────────────────
 
@@ -101,9 +89,7 @@ namespace FoodMatch.Food
 
         // ─── Public API ───────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Gọi bởi FoodInteractionHandler khi player tap vào food.
-        /// </summary>
+        /// <summary>Gọi bởi FoodInteractionHandler khi player tap vào food.</summary>
         public void HandleFoodTapped(FoodItem foodItem, Action onComplete = null)
         {
             if (!_isReady)
@@ -123,17 +109,12 @@ namespace FoodMatch.Food
 
             if (ownerTray == null)
             {
-                // Food đang nằm trong BackupTray — player tap thủ công
                 HandleBackupFoodTapped(foodItem, onComplete);
                 return;
             }
 
             FoodItem poppedItem = ownerTray.TryPopItem(foodItem);
-            if (poppedItem == null)
-            {
-                onComplete?.Invoke();
-                return;
-            }
+            if (poppedItem == null) { onComplete?.Invoke(); return; }
 
             var matchResult = _orderQueue.TryMatchFood(poppedItem.Data.foodID);
 
@@ -145,44 +126,29 @@ namespace FoodMatch.Food
 
         // ─── Auto-Match: BackupTray → OrderTray ──────────────────────────────
 
-        /// <summary>
-        /// Được gọi khi 1 OrderTray mới trở thành Active.
-        /// Scan toàn bộ BackupTray, tìm food khớp với bất kỳ order nào đang active,
-        /// rồi tự động fly lần lượt (stagger) lên OrderTray tương ứng.
-        /// </summary>
         private void HandleNewOrderActive(int newOrderFoodID)
         {
             if (!_isReady || _backupTray == null || _orderQueue == null) return;
 
-            // Lấy tất cả food hiện có trong BackupTray
             var allBackupFoods = _backupTray.GetAllFoods();
             if (allBackupFoods == null || allBackupFoods.Count == 0) return;
 
-            // Tìm những food có thể match với bất kỳ order đang active nào
             var matchQueue = new Queue<(FoodItem food, OrderTray tray, int slotIndex)>();
 
             foreach (var food in allBackupFoods)
             {
                 if (food == null || food.Data == null) continue;
-
                 var matchResult = _orderQueue.TryMatchFood(food.Data.foodID);
                 if (matchResult.IsMatch)
-                {
                     matchQueue.Enqueue((food, matchResult.Tray, matchResult.SlotIndex));
-                }
             }
 
             if (matchQueue.Count == 0) return;
 
-            // Fly lần lượt với stagger delay để dễ nhìn
             if (!_isAutoMatching)
                 StartCoroutine(AutoMatchCoroutine(matchQueue));
         }
 
-        /// <summary>
-        /// Coroutine fly từng food trong queue lên OrderTray với delay giữa mỗi cái.
-        /// Đợi food fly xong rồi mới fly cái tiếp theo để tránh race condition.
-        /// </summary>
         private IEnumerator AutoMatchCoroutine(
             Queue<(FoodItem food, OrderTray tray, int slotIndex)> matchQueue)
         {
@@ -192,12 +158,13 @@ namespace FoodMatch.Food
             {
                 var (food, tray, slotIndex) = matchQueue.Dequeue();
 
-                // Re-validate: food có còn trong backup không, order có còn nhận không
                 if (food == null || food.Data == null) continue;
-                if (tray == null || tray.State != OrderState.Active) continue;
-                if (!_backupTray.TryRemoveFood(food)) continue; // Đã bị lấy đi rồi
 
-                // Re-check slotIndex vì deliveredCount có thể đã thay đổi
+                // ── FIX CS1061: dùng CurrentStateId (OrderTrayStateId) thay vì State (OrderState) ──
+                if (tray == null || tray.CurrentStateId != OrderTrayStateId.Active) continue;
+
+                if (!_backupTray.TryRemoveFood(food)) continue;
+
                 var recheck = _orderQueue.TryMatchFood(food.Data.foodID);
                 int validSlot = recheck.IsMatch ? recheck.SlotIndex : slotIndex;
                 OrderTray validTray = recheck.IsMatch ? recheck.Tray : tray;
@@ -205,7 +172,6 @@ namespace FoodMatch.Food
                 bool done = false;
                 FlyToOrderSlot(food, validTray, validSlot, () => done = true);
 
-                // Đợi animation bay xong + stagger delay
                 yield return new WaitUntil(() => done);
                 yield return new WaitForSeconds(autoMatchStaggerDelay);
             }
@@ -218,48 +184,35 @@ namespace FoodMatch.Food
         private void FlyToOrderSlot(FoodItem food, OrderTray orderTray,
                                     int slotIndex, Action onComplete)
         {
-            // Scale đích = prefabScale × multiplier
             Vector3 prefabScale = food.Data.prefab.transform.localScale;
-            Vector3 targetScale = new Vector3(
-                prefabScale.x * orderSlotScaleMultiplier,
-                prefabScale.y * orderSlotScaleMultiplier,
-                prefabScale.z * orderSlotScaleMultiplier
-            );
+            Vector3 targetScale = prefabScale * orderSlotScaleMultiplier;
             Vector3 targetPos = orderTray.GetNextSlotWorldPosition();
 
             DisableCollider(food);
 
-            Sequence seq = DOTween.Sequence();
-
-            seq.Append(
-                food.transform
+            DOTween.Sequence()
+                .Append(food.transform
                     .DOJump(targetPos, orderJumpPower, orderJumpCount, orderJumpDuration)
-                    .SetEase(Ease.OutQuad)
-            );
-            seq.Join(
-                food.transform
+                    .SetEase(Ease.OutQuad))
+                .Join(food.transform
                     .DOScale(targetScale, orderJumpDuration * 0.8f)
-                    .SetEase(Ease.InOutSine)
-            );
+                    .SetEase(Ease.InOutSine))
+                .OnComplete(() =>
+                {
+                    food.transform.position = targetPos;
+                    food.transform.localScale = targetScale;
 
-            seq.OnComplete(() =>
-            {
-                // Snap chính xác vào slot
-                food.transform.position = targetPos;
-                food.transform.localScale = targetScale;
+                    SpawnSparkleVFX(targetPos);
+                    orderTray.ConfirmDelivery(slotIndex);
 
-                SpawnSparkleVFX(targetPos);
-                orderTray.ConfirmDelivery(slotIndex);
+                    DOVirtual.DelayedCall(0.35f,
+                        () => PoolManager.Instance.ReturnFood(food.FoodID, food.gameObject),
+                        false);
 
-                DOVirtual.DelayedCall(0.35f,
-                    () => PoolManager.Instance.ReturnFood(food.FoodID, food.gameObject),
-                    false);
-
-                onComplete?.Invoke();
-            });
-
-            seq.SetUpdate(false);
-            seq.Play();
+                    onComplete?.Invoke();
+                })
+                .SetUpdate(false)
+                .Play();
         }
 
         // ─── Bay vào BackupTray ───────────────────────────────────────────────
@@ -275,44 +228,31 @@ namespace FoodMatch.Food
                 return;
             }
 
-            // Scale đích = prefabScale × multiplier
             Vector3 prefabScale = food.Data.prefab.transform.localScale;
-            Vector3 targetScale = new Vector3(
-                prefabScale.x * backupSlotScaleMultiplier,
-                prefabScale.y * backupSlotScaleMultiplier,
-                prefabScale.z * backupSlotScaleMultiplier
-            );
+            Vector3 targetScale = prefabScale * backupSlotScaleMultiplier;
             Vector3 targetPos = _backupTray.GetNextSlotWorldPosition();
 
             DisableCollider(food);
 
-            Sequence seq = DOTween.Sequence();
-
-            seq.Append(
-                food.transform
+            DOTween.Sequence()
+                .Append(food.transform
                     .DOJump(targetPos, backupJumpPower, 1, backupJumpDuration)
-                    .SetEase(Ease.OutQuad)
-            );
-            seq.Join(
-                food.transform
+                    .SetEase(Ease.OutQuad))
+                .Join(food.transform
                     .DOScale(targetScale, backupJumpDuration * 0.8f)
-                    .SetEase(Ease.InOutSine)
-            );
+                    .SetEase(Ease.InOutSine))
+                .OnComplete(() =>
+                {
+                    food.transform.position = targetPos;
+                    food.transform.localScale = targetScale;
 
-            seq.OnComplete(() =>
-            {
-                // Snap chính xác vào anchor BackupTray
-                food.transform.position = targetPos;
-                food.transform.localScale = targetScale;
+                    _backupTray.ReceiveFood(food);
+                    EventBus.RaiseFoodToBackup(food.Data);
 
-                _backupTray.ReceiveFood(food);
-                EventBus.RaiseFoodToBackup(food.Data);
-
-                onComplete?.Invoke();
-            });
-
-            seq.SetUpdate(false);
-            seq.Play();
+                    onComplete?.Invoke();
+                })
+                .SetUpdate(false)
+                .Play();
         }
 
         // ─── Tap food trong BackupTray (player chủ động) ──────────────────────
