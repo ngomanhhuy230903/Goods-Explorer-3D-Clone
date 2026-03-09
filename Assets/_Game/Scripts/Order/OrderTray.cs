@@ -9,16 +9,15 @@ using FoodMatch.Data;
 namespace FoodMatch.Order
 {
     // ═══════════════════════════════════════════════════════════════════════════
-    //  STATE PATTERN – Mỗi state là class riêng, dễ thêm state mới
+    //  STATE PATTERN – (giữ nguyên các state, thêm reservation-aware slot logic)
     // ═══════════════════════════════════════════════════════════════════════════
+
     public abstract class OrderTrayState
     {
         protected OrderTray Owner { get; }
         protected OrderTrayState(OrderTray owner) => Owner = owner;
-
         public virtual void Enter() { }
         public virtual void Exit() { }
-        // Template Method: subclass override từng bước
     }
 
     public sealed class IdleState : OrderTrayState
@@ -52,11 +51,7 @@ namespace FoodMatch.Order
             var homePos = Owner.HomeAnchoredPos;
 
             rt.DOKill();
-            // Float animation – DOTween loop
-            rt.DOAnchorPosY(homePos.y + 6f, 1.0f)
-              .SetEase(Ease.InOutSine)
-              .SetLoops(-1, LoopType.Yoyo)
-              .SetUpdate(true);
+            rt.DoFloatLoop(homePos.y);
 
             if (Owner.OrderData != null)
                 DOVirtual.DelayedCall(0.1f,
@@ -66,7 +61,7 @@ namespace FoodMatch.Order
 
         public override void Exit()
         {
-            Owner.RectTransform.DOKill(); // Dừng float trước khi transition
+            Owner.RectTransform.DOKill();
         }
     }
 
@@ -86,19 +81,16 @@ namespace FoodMatch.Order
 
         public override void Enter()
         {
-            // DOTween: flash bg + punch scale
             _bgImage?.DOColor(_completedColor, 0.2f).SetUpdate(true);
-            Owner.transform
-                 .DOPunchScale(Vector3.one * 0.22f, 0.45f, 7, 0.5f)
-                 .SetUpdate(true);
-
+            Owner.transform.DOPunchScale(Vector3.one * 0.22f, 0.45f, 7, 0.5f).SetUpdate(true);
             _vfxRoot?.SetActive(true);
 
-            // Notify observers – gọi qua internal helper để tránh CS0070
+            // Xóa toàn bộ reservation của tray này khi complete
+            SlotReservationRegistry.Instance.ClearOrderTray(Owner.TrayIndex);
+
             Owner.RaiseCompleted();
             EventBus.RaiseOrderCompleted(Owner.TrayIndex);
 
-            // KEY FIX: Delay ngắn rồi chuyển sang Leaving (bay lên, KHÔNG rearrange)
             DOVirtual.DelayedCall(0.7f,
                 () => Owner.TransitionTo(OrderTrayStateId.Leaving), false)
                 .SetTarget(Owner.gameObject);
@@ -111,16 +103,15 @@ namespace FoodMatch.Order
 
         public override void Enter()
         {
-            var homePos = Owner.HomeAnchoredPos;
+            SlotReservationRegistry.Instance.ClearOrderTray(Owner.TrayIndex);
 
-            // KEY FIX: Bay THẲNG LÊN, không liên quan đến tray khác
             Owner.RectTransform
-                 .DOAnchorPosY(homePos.y + 400f, 0.38f)
+                 .DOAnchorPosY(Owner.HomeAnchoredPos.y + 400f, 0.38f)
                  .SetEase(Ease.InBack)
                  .SetUpdate(true)
                  .OnComplete(() =>
                  {
-                     Owner.RaiseLeft(); // internal helper tránh CS0070
+                     Owner.RaiseLeft();
                      EventBus.RaiseOrderLeft(Owner.TrayIndex);
                      PoolManager.Instance.ReturnOrder(Owner.gameObject);
                  });
@@ -128,31 +119,15 @@ namespace FoodMatch.Order
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    //  STATE ID ENUM
+    //  ENUM
     // ═══════════════════════════════════════════════════════════════════════════
     public enum OrderTrayStateId { Idle, Enter, Active, Completed, Leaving }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    //  OBSERVER PATTERN – Typed events thay vì UnityEvent để GC-friendly
+    //  ORDER TRAY — Reservation-aware slot management
     // ═══════════════════════════════════════════════════════════════════════════
-
-    /// <summary>
-    /// Khay order trên UI.
-    ///
-    /// Áp dụng:
-    ///   State Pattern   – mỗi state class riêng, Template Method enter/exit
-    ///   Observer        – event OnCompleted, OnLeft
-    ///   Object Pool     – IPoolable
-    ///   DOTween         – mọi animation qua DOTween (không dùng Coroutine)
-    ///   Decorator       – DOTween extension method (xem bên dưới)
-    ///   Null Object     – FoodDatabase lookup trả null-safe
-    ///
-    /// KEY FIX: OnEnterLeaving chỉ bay LÊN, không notify rearrange.
-    /// OrderQueue giữ slot position cố định qua SlotRegistry.
-    /// </summary>
     public class OrderTray : MonoBehaviour, IPoolable
     {
-        // ── Inspector ────────────────────────────────────────────────────────
         [Header("─── Slots ───────────────────────────")]
         [SerializeField] private List<OrderSlotUI> slots = new List<OrderSlotUI>(3);
 
@@ -173,19 +148,16 @@ namespace FoodMatch.Order
         public OrderData OrderData { get; private set; }
         public int TrayIndex { get; private set; }
 
-        // ── Observer events ───────────────────────────────────────────────────
+        // ── Events (Observer Pattern) ─────────────────────────────────────────
         public event Action<OrderTray> OnCompleted;
         public event Action<OrderTray> OnLeft;
 
-        // ── Internal raise helpers (State classes bên ngoài gọi qua đây, tránh CS0070) ─
         internal void RaiseCompleted() => OnCompleted?.Invoke(this);
         internal void RaiseLeft() => OnLeft?.Invoke(this);
 
         // ── State Machine ─────────────────────────────────────────────────────
         private OrderTrayState _currentState;
         private Dictionary<OrderTrayStateId, OrderTrayState> _states;
-
-        /// <summary>State hiện tại dạng enum — check từ bên ngoài thay cho OrderState cũ.</summary>
         public OrderTrayStateId CurrentStateId { get; private set; } = OrderTrayStateId.Idle;
 
         // ─────────────────────────────────────────────────────────────────────
@@ -195,13 +167,11 @@ namespace FoodMatch.Order
             BuildStateMachine();
         }
 
-        // ── State Machine Construction (Factory) ──────────────────────────────
         private void BuildStateMachine()
         {
             _states = new Dictionary<OrderTrayStateId, OrderTrayState>
             {
                 [OrderTrayStateId.Idle] = new IdleState(this),
-                // EnterState & CompletedState rebuilt per-init karena perlu homePos
                 [OrderTrayStateId.Active] = new ActiveState(this),
                 [OrderTrayStateId.Leaving] = new LeavingState(this),
             };
@@ -214,21 +184,20 @@ namespace FoodMatch.Order
             completionVFXRoot?.SetActive(false);
             if (trayBgImage != null) trayBgImage.color = normalBgColor;
             _currentState = _states[OrderTrayStateId.Idle];
+            CurrentStateId = OrderTrayStateId.Idle;
         }
 
         public void OnDespawn()
         {
             DOTween.Kill(gameObject);
             RectTransform.DOKill();
+            SlotReservationRegistry.Instance.ClearOrderTray(TrayIndex);
             OrderData = null;
             foreach (var slot in slots) slot.ResetSlot();
         }
 
         // ── Public API ────────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Khởi tạo tray: rebuild states cần homePos → spawn icon → slide in.
-        /// </summary>
         public void Initialize(OrderData orderData, int trayIndex,
                                Vector2 homePos, bool enterFromTop = true)
         {
@@ -236,18 +205,16 @@ namespace FoodMatch.Order
             TrayIndex = trayIndex;
             HomeAnchoredPos = homePos;
 
-            // Rebuild states phụ thuộc homePos / data
             _states[OrderTrayStateId.Enter] = new EnterState(this, homePos);
             _states[OrderTrayStateId.Completed] = new CompletedState(
                 this, trayBgImage, completedBgColor, completionVFXRoot);
 
-            // Lookup food (Null Object: nếu null log error, không crash)
             var foodData = foodDatabase != null
                 ? foodDatabase.GetFoodByID(orderData.FoodID)
                 : null;
 
             if (foodData == null)
-                Debug.LogError($"[OrderTray] Không tìm thấy FoodItemData id={orderData.FoodID}");
+                Debug.LogError($"[OrderTray] FoodItemData id={orderData.FoodID} not found");
             else
                 foreach (var slot in slots)
                     slot.ShowFoodIcon(foodData);
@@ -261,7 +228,6 @@ namespace FoodMatch.Order
             }
         }
 
-        /// <summary>Di chuyển home position (chỉ dùng nếu layout thay đổi, không phải khi tray complete).</summary>
         public void MoveTo(Vector2 newHomePos, float duration = 0.35f)
         {
             HomeAnchoredPos = newHomePos;
@@ -270,15 +236,51 @@ namespace FoodMatch.Order
                          .SetUpdate(true);
         }
 
-        public bool TryMatch(int foodID, out int slotIndex)
+        // ── RESERVATION-AWARE SLOT MATCHING ──────────────────────────────────
+
+        /// <summary>
+        /// Thử match food VÀ reserve slot ngay lập tức.
+        /// Nếu slot tiếp theo đã bị reserve, tìm slot kế tiếp còn trống.
+        /// Trả về -1 nếu không còn slot nào.
+        ///
+        /// QUAN TRỌNG: Reserve ngay trong cùng frame với check → tránh race condition.
+        /// </summary>
+        public bool TryMatchAndReserve(int foodID, int foodItemInstanceId, out int reservedSlotIndex)
         {
-            slotIndex = -1;
-            if (_currentState is not ActiveState) return false;
+            reservedSlotIndex = -1;
+
+            if (CurrentStateId != OrderTrayStateId.Active) return false;
             if (OrderData == null || OrderData.FoodID != foodID) return false;
             if (OrderData.IsCompleted) return false;
 
-            slotIndex = OrderData.DeliveredCount;
-            return true;
+            // Tìm slot: bắt đầu từ DeliveredCount, nhảy qua slot đã reserved
+            int startSlot = OrderData.DeliveredCount;
+            int totalSlots = slots.Count;
+
+            for (int s = startSlot; s < totalSlots; s++)
+            {
+                // Slot này đã delivered (confirmed) rồi → skip
+                if (s < OrderData.DeliveredCount) continue;
+
+                // Thử reserve — nếu đã có người khác reserve thì next slot
+                if (SlotReservationRegistry.Instance.TryReserveOrderSlot(
+                        TrayIndex, s, foodItemInstanceId))
+                {
+                    reservedSlotIndex = s;
+                    return true;
+                }
+            }
+
+            // Tất cả slot đã đầy hoặc đang reserved
+            Debug.Log($"[OrderTray#{TrayIndex}] Không còn slot cho food#{foodItemInstanceId}");
+            return false;
+        }
+
+        public Vector3 GetSlotWorldPosition(int slotIndex)
+        {
+            if (slotIndex < 0 || slotIndex >= slots.Count)
+                return transform.position;
+            return slots[slotIndex].WorldPosition;
         }
 
         public Vector3 GetNextSlotWorldPosition()
@@ -293,6 +295,10 @@ namespace FoodMatch.Order
             return next < slots.Count ? slots[next].FoodTargetScale : Vector3.one;
         }
 
+        /// <summary>
+        /// Confirm delivery tại slotIndex. Gọi SAU khi animation kết thúc.
+        /// Slot reservation sẽ được release tự động bởi command.
+        /// </summary>
         public void ConfirmDelivery(int slotIndex)
         {
             if (slotIndex < 0 || slotIndex >= slots.Count) return;
@@ -305,54 +311,50 @@ namespace FoodMatch.Order
                 TransitionTo(OrderTrayStateId.Completed);
         }
 
-        // ── State Transition (internal, called by State classes) ──────────────
-        /// <summary>
-        /// Chuyển state: gọi Exit() trên state cũ → Enter() trên state mới.
-        /// Internal vì chỉ State hoặc OrderQueue trigger.
-        /// </summary>
+        /// <summary>Hủy reservation nếu food bay bị cancel/fail.</summary>
+        public void ReleaseSlotReservation(int slotIndex)
+        {
+            SlotReservationRegistry.Instance.ReleaseOrderSlot(TrayIndex, slotIndex);
+        }
+
+        // ── State Transition ──────────────────────────────────────────────────
         internal void TransitionTo(OrderTrayStateId stateId)
         {
             if (!_states.TryGetValue(stateId, out var nextState))
             {
-                Debug.LogError($"[OrderTray] State {stateId} chưa được đăng ký!");
+                Debug.LogError($"[OrderTray] State {stateId} not registered!");
                 return;
             }
 
             _currentState?.Exit();
-            CurrentStateId = stateId;   // ← cập nhật enum để bên ngoài check
+            CurrentStateId = stateId;
             _currentState = nextState;
             _currentState.Enter();
         }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    //  DECORATOR PATTERN – DOTween extension methods để tái sử dụng animation
+    //  DECORATOR PATTERN — DOTween Extensions
     // ═══════════════════════════════════════════════════════════════════════════
     public static class OrderTrayDOTweenExtensions
     {
-        /// <summary>Float animation chuẩn dùng cho Active state.</summary>
-        public static Tweener DoFloatLoop(this RectTransform rt, float baseY, float amplitude = 6f, float duration = 1f)
-        {
-            return rt.DOAnchorPosY(baseY + amplitude, duration)
-                     .SetEase(Ease.InOutSine)
-                     .SetLoops(-1, LoopType.Yoyo)
-                     .SetUpdate(true);
-        }
+        public static Tweener DoFloatLoop(this RectTransform rt, float baseY,
+                                          float amplitude = 6f, float duration = 1f)
+            => rt.DOAnchorPosY(baseY + amplitude, duration)
+                 .SetEase(Ease.InOutSine)
+                 .SetLoops(-1, LoopType.Yoyo)
+                 .SetUpdate(true);
 
-        /// <summary>Slide in từ trên.</summary>
-        public static Tweener DoSlideInFromTop(this RectTransform rt, Vector2 targetPos, float duration = 0.45f)
-        {
-            return rt.DOAnchorPos(targetPos, duration)
-                     .SetEase(Ease.OutBack)
-                     .SetUpdate(true);
-        }
+        public static Tweener DoSlideInFromTop(this RectTransform rt,
+                                                Vector2 targetPos, float duration = 0.45f)
+            => rt.DOAnchorPos(targetPos, duration)
+                 .SetEase(Ease.OutBack)
+                 .SetUpdate(true);
 
-        /// <summary>Bay lên ra khỏi màn hình.</summary>
-        public static Tweener DoFlyOut(this RectTransform rt, float targetY, float duration = 0.38f)
-        {
-            return rt.DOAnchorPosY(targetY, duration)
-                     .SetEase(Ease.InBack)
-                     .SetUpdate(true);
-        }
+        public static Tweener DoFlyOut(this RectTransform rt,
+                                        float targetY, float duration = 0.38f)
+            => rt.DOAnchorPosY(targetY, duration)
+                 .SetEase(Ease.InBack)
+                 .SetUpdate(true);
     }
 }

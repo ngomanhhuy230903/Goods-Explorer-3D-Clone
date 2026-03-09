@@ -6,24 +6,28 @@ using FoodMatch.Food;
 
 namespace FoodMatch.Tray
 {
+    // ═══════════════════════════════════════════════════════════════════════════
+    //  BACKUP TRAY — Reservation-aware, Observer via EventBus
+    // ═══════════════════════════════════════════════════════════════════════════
+
     /// <summary>
-    /// Khay chứa đồ thừa.
+    /// Khay chứa đồ thừa. Slot được reserve TRƯỚC khi food bay đến để tránh collision.
     ///
-    /// THAY ĐỔI:
-    ///   - ReceiveFood() lưu đúng anchor transform để food snap vị trí chính xác.
-    ///   - GetNextSlotWorldPosition() trả về world position của anchor thực tế.
-    ///   - Thêm GetAnchorForFood() để FoodFlowController snap food sau animation.
+    /// THAY ĐỔI SO VỚI VERSION CŨ:
+    ///   - TryReserveNextSlot() → reserve slot trong SlotReservationRegistry ngay lập tức
+    ///   - ReceiveFood() chỉ confirm vào slot đã reserve (không tự tìm slot nữa)
+    ///   - TryRemoveFood() cũng release reservation nếu food đang pending
     /// </summary>
     public class BackupTray : MonoBehaviour
     {
         // ─── Inspector ────────────────────────────────────────────────────────
-        [Header("─── Slot Visual (chế độ Standalone) ──")]
+        [Header("─── Slot Visual ──────────────────────")]
         [SerializeField] private GameObject slotVisualPrefab;
 
         [Header("─── Warning ──────────────────────────")]
         [SerializeField] private int warningThreshold = 2;
 
-        [Header("─── Expansion (chế độ Standalone) ────")]
+        [Header("─── Expansion ────────────────────────")]
         [SerializeField] private int maxSlots = 7;
         [SerializeField] private float shiftDuration = 0.35f;
 
@@ -33,22 +37,51 @@ namespace FoodMatch.Tray
         // ─── Runtime ──────────────────────────────────────────────────────────
         private readonly List<Transform> _slotAnchors = new List<Transform>();
 
-        // slot index → food item đang chiếm
+        // slot index → food item đang chiếm (confirmed)
         private readonly Dictionary<int, FoodItem> _occupants = new Dictionary<int, FoodItem>();
 
         private float _slotSpacing = 1.5f;
         private int _capacity = 0;
-        private bool _isInitialized = false;
         private bool _warningActive = false;
 
         // ─── Public Properties ────────────────────────────────────────────────
         public int OccupiedCount => _occupants.Count;
         public int Capacity => _capacity;
-        public bool HasFreeSlot() => GetFreeSlotIndex() >= 0;
 
-        // =========================================================================
-        // CHẾ ĐỘ B — BackupTraySpawner inject từ ngoài vào
-        // =========================================================================
+        // ─── Reservation-aware free slot check ───────────────────────────────
+
+        /// <summary>
+        /// Trả về index slot trống VÀ chưa bị reserve.
+        /// Dùng cho kiểm tra trước khi tạo command.
+        /// </summary>
+        public bool HasFreeSlot() => TryGetFreeSlotIndex(out _);
+
+        /// <summary>
+        /// Reserve slot tiếp theo cho 1 food cụ thể.
+        /// Gọi TRƯỚC khi bắt đầu animation bay.
+        /// Trả về slot index, hoặc -1 nếu không còn slot.
+        /// </summary>
+        public int TryReserveNextSlot(int foodInstanceId)
+        {
+            if (!TryGetFreeSlotIndex(out int idx)) return -1;
+
+            if (!SlotReservationRegistry.Instance.TryReserveBackupSlot(idx, foodInstanceId))
+            {
+                // Slot vừa bị snatch — tìm lại
+                for (int i = 0; i < _slotAnchors.Count; i++)
+                {
+                    if ((_occupants.ContainsKey(i) && _occupants[i] != null)) continue;
+                    if (SlotReservationRegistry.Instance.IsBackupSlotReserved(i)) continue;
+                    if (SlotReservationRegistry.Instance.TryReserveBackupSlot(i, foodInstanceId))
+                        return i;
+                }
+                return -1;
+            }
+
+            return idx;
+        }
+
+        // ─── External Setup ───────────────────────────────────────────────────
 
         public void SetSlotAnchors(List<Transform> anchors)
         {
@@ -67,27 +100,12 @@ namespace FoodMatch.Tray
             _occupants.Clear();
             _capacity = capacity;
             _warningActive = false;
-            _isInitialized = true;
             Log($"ResetTray: capacity={capacity}");
         }
-
-        public void ExpandCapacity(int addCount)
-        {
-            _capacity += addCount;
-            Log($"ExpandCapacity(+{addCount}): capacity={_capacity}");
-            EventBus.RaiseBackupExpanded(_capacity);
-            CheckWarningAndLose();
-        }
-
-        // =========================================================================
-        // CHẾ ĐỘ A — Standalone
-        // =========================================================================
 
         public void Initialize(int initialSlotCount, float slotSpacing = 1.5f)
         {
             _slotSpacing = slotSpacing;
-            _isInitialized = false;
-
             ClearSlotsAndFood();
 
             float totalWidth = (initialSlotCount - 1) * slotSpacing;
@@ -100,13 +118,121 @@ namespace FoodMatch.Tray
             }
 
             _capacity = initialSlotCount;
-            _isInitialized = true;
-            Log($"Initialize: {_capacity} slots, spacing={slotSpacing}");
+            Log($"Initialize: {_capacity} slots.");
+        }
+
+        // ─── CORE API ─────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// World position của slot index cụ thể.
+        /// FoodFlowController dùng slotIndex từ reservation để lấy đích bay.
+        /// </summary>
+        public Vector3 GetSlotWorldPosition(int slotIndex)
+        {
+            if (slotIndex < 0 || slotIndex >= _slotAnchors.Count) return Vector3.zero;
+            return _slotAnchors[slotIndex].position;
+        }
+
+        /// <summary>Legacy — dùng GetSlotWorldPosition(slotIndex) thay thế.</summary>
+        public Vector3 GetNextSlotWorldPosition()
+        {
+            TryGetFreeSlotIndex(out int idx);
+            return idx >= 0 ? _slotAnchors[idx].position : Vector3.zero;
+        }
+
+        public Transform GetAnchorForFood(FoodItem food)
+        {
+            foreach (var kv in _occupants)
+                if (kv.Value == food && kv.Key < _slotAnchors.Count)
+                    return _slotAnchors[kv.Key];
+            return null;
+        }
+
+        /// <summary>
+        /// Confirm food vào đúng slot đã reserved (slotIndex từ command).
+        /// Snap hard về anchor để tránh drift.
+        /// </summary>
+        public void ReceiveFood(FoodItem food, int reservedSlotIndex)
+        {
+            if (reservedSlotIndex < 0 || reservedSlotIndex >= _slotAnchors.Count)
+            {
+                Debug.LogError($"[BackupTray] Invalid slot index {reservedSlotIndex}!");
+                return;
+            }
+
+            _occupants[reservedSlotIndex] = food;
+
+            // Hard snap — anchor có thể đã dịch chuyển trong lúc food bay
+            food.transform.position = _slotAnchors[reservedSlotIndex].position;
+
+            Log($"ReceiveFood: {food.Data?.foodName} → slot[{reservedSlotIndex}]");
+            CheckWarningAndLose();
+        }
+
+        /// <summary>Overload legacy — tự tìm slot (ít an toàn hơn).</summary>
+        public void ReceiveFood(FoodItem food)
+        {
+            int idx = -1;
+            foreach (var kv in _occupants)
+            {
+                // Tìm slot có reservation cho food này
+            }
+
+            TryGetFreeSlotIndex(out idx);
+            if (idx < 0)
+            {
+                Debug.LogError("[BackupTray] Không còn slot trống (legacy ReceiveFood)!");
+                return;
+            }
+            ReceiveFood(food, idx);
+        }
+
+        public bool TryRemoveFood(FoodItem food)
+        {
+            foreach (var kv in _occupants)
+            {
+                if (kv.Value != food) continue;
+                _occupants.Remove(kv.Key);
+                // Release reservation (nếu vì lý do nào đó vẫn còn)
+                SlotReservationRegistry.Instance.ReleaseBackupSlot(kv.Key);
+                Log($"TryRemoveFood: {food.Data?.foodName} from slot[{kv.Key}]");
+                CheckWarningAndLose();
+                return true;
+            }
+            return false;
+        }
+
+        public void ClearAllFood()
+        {
+            foreach (var kv in _occupants)
+                if (kv.Value != null)
+                    PoolManager.Instance.ReturnFood(kv.Value.FoodID, kv.Value.gameObject);
+            _occupants.Clear();
+            _warningActive = false;
+            Log("ClearAllFood.");
+        }
+
+        public List<FoodItem> GetAllFoods()
+        {
+            var result = new List<FoodItem>();
+            foreach (var kv in _occupants)
+                if (kv.Value != null) result.Add(kv.Value);
+            return result;
+        }
+
+        // ─── Expansion ────────────────────────────────────────────────────────
+
+        public void ExpandCapacity(int addCount)
+        {
+            _capacity += addCount;
+            Log($"ExpandCapacity(+{addCount}): capacity={_capacity}");
+            EventBus.RaiseBackupExpanded(_capacity);
+            CheckWarningAndLose();
         }
 
         public void ExpandCapacity()
         {
-            if (_capacity >= maxSlots) { Log($"Đã đạt maxSlots={maxSlots}."); return; }
+            if (_capacity >= maxSlots) { Log("maxSlots reached."); return; }
 
             int newCount = _capacity + 1;
             float totalWidth = (newCount - 1) * _slotSpacing;
@@ -132,101 +258,27 @@ namespace FoodMatch.Tray
 
             _slotAnchors.Add(newAnchor);
             _capacity++;
-
-            Log($"ExpandCapacity: {_capacity} slots.");
             EventBus.RaiseBackupExpanded(_capacity);
             CheckWarningAndLose();
         }
 
-        // =========================================================================
-        // CORE API
-        // =========================================================================
+        // ─── Internal Helpers ─────────────────────────────────────────────────
 
-        /// <summary>
-        /// World position của anchor slot trống tiếp theo.
-        /// FoodFlowController dùng vị trí này làm đích bay của food.
-        /// </summary>
-        public Vector3 GetNextSlotWorldPosition()
+        private bool TryGetFreeSlotIndex(out int idx)
         {
-            int idx = GetFreeSlotIndex();
-            if (idx < 0) return Vector3.zero;
-            return _slotAnchors[idx].position;
-        }
-
-        /// <summary>
-        /// Sau khi food bay xong và gọi ReceiveFood(), trả về anchor transform
-        /// để FoodFlowController có thể gắn SlotFollower hoặc snap chính xác.
-        /// </summary>
-        public Transform GetAnchorForFood(FoodItem food)
-        {
-            foreach (var kv in _occupants)
+            for (int i = 0; i < _slotAnchors.Count; i++)
             {
-                if (kv.Value == food && kv.Key < _slotAnchors.Count)
-                    return _slotAnchors[kv.Key];
+                bool occupied = _occupants.ContainsKey(i) && _occupants[i] != null;
+                bool reserved = SlotReservationRegistry.Instance.IsBackupSlotReserved(i);
+                if (!occupied && !reserved)
+                {
+                    idx = i;
+                    return true;
+                }
             }
-            return null;
-        }
-
-        /// <summary>
-        /// Nhận food vào slot trống. Gọi bởi FoodFlowController SAU animation bay.
-        /// Food đã được snap về targetPos bởi FoodFlowController trước khi gọi hàm này.
-        /// </summary>
-        public void ReceiveFood(FoodItem food)
-        {
-            int idx = GetFreeSlotIndex();
-            if (idx < 0)
-            {
-                Debug.LogError("[BackupTray] Không còn slot trống!");
-                return;
-            }
-
-            _occupants[idx] = food;
-
-            // Snap food về đúng anchor (phòng trường hợp anchor di chuyển
-            // trong khoảng thời gian food đang bay)
-            if (idx < _slotAnchors.Count)
-                food.transform.position = _slotAnchors[idx].position;
-
-            Log($"ReceiveFood: {food.Data?.foodName} → slot[{idx}] @ {_slotAnchors[idx].position}");
-            CheckWarningAndLose();
-        }
-
-        public bool TryRemoveFood(FoodItem food)
-        {
-            foreach (var kv in _occupants)
-            {
-                if (kv.Value != food) continue;
-                _occupants.Remove(kv.Key);
-                Log($"TryRemoveFood: {food.Data?.foodName} removed from slot[{kv.Key}]");
-
-                // Reset warning nếu slot vừa giải phóng giúp thoát ngưỡng warning
-                CheckWarningAndLose();
-                return true;
-            }
+            idx = -1;
             return false;
         }
-
-        public void ClearAllFood()
-        {
-            foreach (var kv in _occupants)
-                if (kv.Value != null)
-                    PoolManager.Instance.ReturnFood(kv.Value.FoodID, kv.Value.gameObject);
-
-            _occupants.Clear();
-            _warningActive = false;
-            Log("ClearAllFood hoàn tất.");
-        }
-
-        /// <summary>Tất cả food hiện trong backup (dùng cho Magnet Item và auto-match).</summary>
-        public List<FoodItem> GetAllFoods()
-        {
-            var result = new List<FoodItem>();
-            foreach (var kv in _occupants)
-                if (kv.Value != null) result.Add(kv.Value);
-            return result;
-        }
-
-        // ─── Internal ─────────────────────────────────────────────────────────
 
         private Transform CreateSlotAnchor(int index, Vector3 localPosition)
         {
@@ -257,19 +309,16 @@ namespace FoodMatch.Tray
             _warningActive = false;
         }
 
-        private int GetFreeSlotIndex()
-        {
-            for (int i = 0; i < _slotAnchors.Count; i++)
-            {
-                if (!_occupants.ContainsKey(i) || _occupants[i] == null)
-                    return i;
-            }
-            return -1;
-        }
-
         private void CheckWarningAndLose()
         {
-            int free = _capacity - _occupants.Count;
+            // Tính free = capacity - (occupied + reserved chưa confirm)
+            int reservedCount = 0;
+            for (int i = 0; i < _capacity; i++)
+                if (SlotReservationRegistry.Instance.IsBackupSlotReserved(i)) reservedCount++;
+
+            int occupied = _occupants.Count;
+            int effectiveUsed = Mathf.Max(occupied, reservedCount + occupied);
+            int free = _capacity - effectiveUsed;
 
             if (free <= 0)
             {
@@ -281,7 +330,7 @@ namespace FoodMatch.Tray
             if (free <= warningThreshold && !_warningActive)
             {
                 _warningActive = true;
-                Log($"CẢNH BÁO: còn {free} slot trống!");
+                Log($"CẢNH BÁO: {free} slots còn trống!");
                 EventBus.RaiseBackupWarning(_occupants.Count, _capacity);
             }
             else if (free > warningThreshold)

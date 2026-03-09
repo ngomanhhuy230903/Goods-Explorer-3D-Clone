@@ -7,21 +7,10 @@ using FoodMatch.Core;
 using FoodMatch.Data;
 using FoodMatch.Tray;
 using FoodMatch.Order;
+using FoodMatch.Flow;
 
 namespace FoodMatch.Food
 {
-    /// <summary>
-    /// SINGLETON — Điều phối luồng tap food → bay → OrderTray hoặc BackupTray.
-    ///
-    /// THAY ĐỔI:
-    ///   1. Lắng nghe EventBus.OnNewOrderActive → tự động scan BackupTray tìm match
-    ///      và fly food từ BackupTray lên OrderTray (không cần player tap).
-    ///   2. Scale = prefabScale × multiplier (có thể chỉnh trong Inspector).
-    ///      VD: prefab scale (10,10,10) × 0.85 = (8.5,8.5,8.5).
-    ///   3. BackupTray snap food về đúng anchor sau khi bay xong.
-    ///
-    /// FIX CS1061: tray.State → tray.CurrentStateId (OrderTrayStateId enum)
-    /// </summary>
     public class FoodFlowController : MonoBehaviour
     {
         // ─── Singleton ────────────────────────────────────────────────────────
@@ -36,17 +25,17 @@ namespace FoodMatch.Food
         [SerializeField] private float backupJumpDuration = 0.4f;
 
         [Header("─── Scale Multipliers ─────────────────")]
-        [Tooltip("prefabScale × multiplier = scale cuối trong OrderTray slot.\n"
-               + "VD: prefab=(10,10,10) × 0.85 → target=(8.5,8.5,8.5).")]
+        [Tooltip("prefabScale × multiplier = scale trong OrderTray slot")]
         [SerializeField] private float orderSlotScaleMultiplier = 0.85f;
-
-        [Tooltip("prefabScale × multiplier = scale cuối trong BackupTray slot.\n"
-               + "VD: prefab=(10,10,10) × 0.70 → target=(7,7,7).")]
+        [Tooltip("prefabScale × multiplier = scale trong BackupTray slot")]
         [SerializeField] private float backupSlotScaleMultiplier = 0.70f;
 
+        [Header("─── Premium VFX Strategy ──────────────")]
+        [Tooltip("Bật để dùng ArcPunchFlyStrategy thay JumpFlyStrategy cho OrderTray")]
+        [SerializeField] private bool usePremiumFlyEffect = false;
+
         [Header("─── Auto-Match Config ─────────────────")]
-        [Tooltip("Delay (giây) giữa mỗi food tự động bay từ BackupTray lên OrderTray.\n"
-               + "Tránh nhiều food bay cùng lúc gây rối mắt.")]
+        [Tooltip("Delay giữa mỗi food auto-bay từ BackupTray → OrderTray")]
         [SerializeField] private float autoMatchStaggerDelay = 0.25f;
 
         [Header("─── VFX ─────────────────────────────")]
@@ -58,25 +47,38 @@ namespace FoodMatch.Food
         private bool _isReady = false;
         private bool _isAutoMatching = false;
 
+        // ─── Strategies (khởi tạo theo usePremiumFlyEffect) ───────────────────
+        private IFlyStrategy _orderFlyStrategy;
+        private IFlyStrategy _backupFlyStrategy;
+
         // ─────────────────────────────────────────────────────────────────────
+        #region Unity Lifecycle
+
         private void Awake()
         {
             if (Instance != null && Instance != this) { Destroy(gameObject); return; }
             Instance = this;
+
+            // Strategy factory — swap không cần sửa thêm dòng nào khác
+            _orderFlyStrategy = FlyStrategyFactory.CreateOrderStrategy(usePremiumFlyEffect);
+            _backupFlyStrategy = FlyStrategyFactory.CreateBackupStrategy();
         }
 
         private void OnEnable() => EventBus.OnNewOrderActive += HandleNewOrderActive;
         private void OnDisable() => EventBus.OnNewOrderActive -= HandleNewOrderActive;
         private void OnDestroy() { if (Instance == this) Instance = null; }
 
-        // ─── Dependency Injection ─────────────────────────────────────────────
+        #endregion
+
+        // ─────────────────────────────────────────────────────────────────────
+        #region Dependency Injection
 
         public void Inject(OrderQueue orderQueue, BackupTray backupTray)
         {
             _orderQueue = orderQueue;
             _backupTray = backupTray;
             _isReady = true;
-            Debug.Log("[FoodFlowController] Inject thành công.");
+            Debug.Log("[FoodFlowController] Inject OK.");
         }
 
         public void ResetDependencies()
@@ -85,9 +87,13 @@ namespace FoodMatch.Food
             _backupTray = null;
             _isReady = false;
             _isAutoMatching = false;
+            SlotReservationRegistry.Instance.ClearAll();
         }
 
-        // ─── Public API ───────────────────────────────────────────────────────
+        #endregion
+
+        // ─────────────────────────────────────────────────────────────────────
+        #region Public API
 
         /// <summary>Gọi bởi FoodInteractionHandler khi player tap vào food.</summary>
         public void HandleFoodTapped(FoodItem foodItem, Action onComplete = null)
@@ -105,27 +111,159 @@ namespace FoodMatch.Food
                 return;
             }
 
-            var ownerTray = foodItem.OwnerTray;
-
-            if (ownerTray == null)
+            // Food trong BackupTray (ownerTray == null)
+            if (foodItem.OwnerTray == null)
             {
                 HandleBackupFoodTapped(foodItem, onComplete);
                 return;
             }
 
-            FoodItem poppedItem = ownerTray.TryPopItem(foodItem);
+            // Pop food ra khỏi FoodTray trước
+            FoodItem poppedItem = foodItem.OwnerTray.TryPopItem(foodItem);
             if (poppedItem == null) { onComplete?.Invoke(); return; }
 
-            var matchResult = _orderQueue.TryMatchFood(poppedItem.Data.foodID);
-
-            if (matchResult.IsMatch)
-                FlyToOrderSlot(poppedItem, matchResult.Tray, matchResult.SlotIndex, onComplete);
-            else
-                FlyToBackupTray(poppedItem, onComplete);
+            // Tạo và execute command pipeline
+            BuildAndExecuteDeliveryCommand(poppedItem, onComplete);
         }
 
-        // ─── Auto-Match: BackupTray → OrderTray ──────────────────────────────
+        #endregion
 
+        // ─────────────────────────────────────────────────────────────────────
+        #region Command Pipeline (Factory + Command Pattern)
+
+        /// <summary>
+        /// CORE LOGIC: Match → Reserve slot ngay → Tạo Command → Execute.
+        /// Reservation xảy ra synchronously trước animation → tránh race condition.
+        /// </summary>
+        private void BuildAndExecuteDeliveryCommand(FoodItem food, Action onComplete)
+        {
+            int instanceId = food.GetInstanceID();
+
+            // 1. Thử match vào OrderTray (kèm reserve slot ngay lập tức)
+            var matchResult = _orderQueue.TryMatchFoodWithReservation(food.Data.foodID, instanceId);
+
+            if (matchResult.IsMatch)
+            {
+                // 2a. Tạo OrderDeliveryCommand (slot đã reserved trong TryMatchFoodWithReservation)
+                var cmd = new OrderDeliveryCommand(food, matchResult.Tray, matchResult.SlotIndex);
+                ExecuteOrderCommand(cmd, onComplete);
+            }
+            else
+            {
+                // 2b. Thử reserve slot trong BackupTray
+                int backupSlot = _backupTray.TryReserveNextSlot(instanceId);
+
+                if (backupSlot < 0)
+                {
+                    // BackupTray đầy → THUA
+                    Debug.Log("[FoodFlowController] BackupTray đầy → THUA!");
+                    EventBus.RaiseBackupFull();
+                    PoolManager.Instance.ReturnFood(food.FoodID, food.gameObject);
+                    onComplete?.Invoke();
+                    return;
+                }
+
+                var cmd = new BackupDeliveryCommand(food, backupSlot);
+                ExecuteBackupCommand(cmd, onComplete);
+            }
+        }
+
+        // ─── Execute Order Command ─────────────────────────────────────────────
+
+        private void ExecuteOrderCommand(OrderDeliveryCommand cmd, Action onComplete)
+        {
+            cmd.Execute(null); // mark Executing
+
+            var food = cmd.Food;
+            var orderTray = cmd.TargetTray;
+            int slotIndex = cmd.SlotIndex;
+
+            // Validate tray còn Active không (có thể đã complete giữa chừng)
+            if (orderTray == null || orderTray.CurrentStateId != OrderTrayStateId.Active)
+            {
+                cmd.Cancel();
+                // Fallback: thử lại với tray khác hoặc về BackupTray
+                BuildAndExecuteDeliveryCommand(food, onComplete);
+                return;
+            }
+
+            Vector3 prefabScale = food.Data.prefab.transform.localScale;
+            Vector3 targetScale = prefabScale * orderSlotScaleMultiplier;
+            Vector3 targetPos = orderTray.GetSlotWorldPosition(slotIndex);
+
+            var orderConfig = new FlyConfig
+            {
+                jumpPower = orderJumpPower,
+                jumpCount = orderJumpCount,
+                duration = orderJumpDuration,
+                easeMove = DG.Tweening.Ease.OutQuad,
+                easeScale = DG.Tweening.Ease.InOutSine
+            };
+
+            _orderFlyStrategy.Execute(food, targetPos, targetScale, orderConfig, () =>
+            {
+                // Re-validate: tray có thể complete từ food khác bay vào trước
+                if (orderTray.CurrentStateId != OrderTrayStateId.Active)
+                {
+                    cmd.MarkFailed();
+                    PoolManager.Instance.ReturnFood(food.FoodID, food.gameObject);
+                    onComplete?.Invoke();
+                    return;
+                }
+
+                SpawnSparkleVFX(targetPos);
+                orderTray.ConfirmDelivery(slotIndex);
+                cmd.MarkCompleted(); // release reservation
+
+                DOVirtual.DelayedCall(0.35f,
+                    () => PoolManager.Instance.ReturnFood(food.FoodID, food.gameObject),
+                    false);
+
+                onComplete?.Invoke();
+            });
+        }
+
+        // ─── Execute Backup Command ────────────────────────────────────────────
+
+        private void ExecuteBackupCommand(BackupDeliveryCommand cmd, Action onComplete)
+        {
+            cmd.Execute(null); // mark Executing
+
+            var food = cmd.Food;
+            int slotIndex = cmd.SlotIndex;
+
+            Vector3 prefabScale = food.Data.prefab.transform.localScale;
+            Vector3 targetScale = prefabScale * backupSlotScaleMultiplier;
+            Vector3 targetPos = _backupTray.GetSlotWorldPosition(slotIndex);
+
+            var backupConfig = new FlyConfig
+            {
+                jumpPower = backupJumpPower,
+                jumpCount = 1,
+                duration = backupJumpDuration,
+                easeMove = DG.Tweening.Ease.OutQuad,
+                easeScale = DG.Tweening.Ease.InOutSine
+            };
+
+            _backupFlyStrategy.Execute(food, targetPos, targetScale, backupConfig, () =>
+            {
+                _backupTray.ReceiveFood(food, slotIndex); // confirm vào đúng slot đã reserved
+                cmd.MarkCompleted(); // release reservation từ registry
+                EventBus.RaiseFoodToBackup(food.Data);
+
+                onComplete?.Invoke();
+            });
+        }
+
+        #endregion
+
+        // ─────────────────────────────────────────────────────────────────────
+        #region Auto-Match: BackupTray → OrderTray (Observer response)
+
+        /// <summary>
+        /// Observer callback khi OrderQueue kích hoạt order mới.
+        /// Scan BackupTray tìm matching food và auto-fly lên OrderTray.
+        /// </summary>
         private void HandleNewOrderActive(int newOrderFoodID)
         {
             if (!_isReady || _backupTray == null || _orderQueue == null) return;
@@ -133,44 +271,60 @@ namespace FoodMatch.Food
             var allBackupFoods = _backupTray.GetAllFoods();
             if (allBackupFoods == null || allBackupFoods.Count == 0) return;
 
-            var matchQueue = new Queue<(FoodItem food, OrderTray tray, int slotIndex)>();
+            // Build command queue: reserve slot NGAY cho từng food match được
+            var commandQueue = new Queue<OrderDeliveryCommand>();
 
             foreach (var food in allBackupFoods)
             {
                 if (food == null || food.Data == null) continue;
-                var matchResult = _orderQueue.TryMatchFood(food.Data.foodID);
-                if (matchResult.IsMatch)
-                    matchQueue.Enqueue((food, matchResult.Tray, matchResult.SlotIndex));
+
+                // Reserve slot ngay tại đây — nếu không còn slot thì không add vào queue
+                var matchResult = _orderQueue.TryMatchFoodWithReservation(
+                    food.Data.foodID, food.GetInstanceID());
+
+                if (!matchResult.IsMatch) continue;
+
+                var cmd = new OrderDeliveryCommand(food, matchResult.Tray, matchResult.SlotIndex);
+                commandQueue.Enqueue(cmd);
             }
 
-            if (matchQueue.Count == 0) return;
+            if (commandQueue.Count == 0) return;
 
             if (!_isAutoMatching)
-                StartCoroutine(AutoMatchCoroutine(matchQueue));
+                StartCoroutine(AutoMatchCoroutine(commandQueue));
         }
 
-        private IEnumerator AutoMatchCoroutine(
-            Queue<(FoodItem food, OrderTray tray, int slotIndex)> matchQueue)
+        private IEnumerator AutoMatchCoroutine(Queue<OrderDeliveryCommand> commandQueue)
         {
             _isAutoMatching = true;
 
-            while (matchQueue.Count > 0)
+            while (commandQueue.Count > 0)
             {
-                var (food, tray, slotIndex) = matchQueue.Dequeue();
+                var cmd = commandQueue.Dequeue();
 
-                if (food == null || food.Data == null) continue;
+                if (cmd.Food == null || cmd.Food.Data == null)
+                {
+                    cmd.Cancel();
+                    continue;
+                }
 
-                // ── FIX CS1061: dùng CurrentStateId (OrderTrayStateId) thay vì State (OrderState) ──
-                if (tray == null || tray.CurrentStateId != OrderTrayStateId.Active) continue;
+                // Validate tray trước khi chạy
+                if (cmd.TargetTray == null ||
+                    cmd.TargetTray.CurrentStateId != OrderTrayStateId.Active)
+                {
+                    cmd.Cancel();
+                    continue;
+                }
 
-                if (!_backupTray.TryRemoveFood(food)) continue;
-
-                var recheck = _orderQueue.TryMatchFood(food.Data.foodID);
-                int validSlot = recheck.IsMatch ? recheck.SlotIndex : slotIndex;
-                OrderTray validTray = recheck.IsMatch ? recheck.Tray : tray;
+                // Remove khỏi BackupTray trước khi bay
+                if (!_backupTray.TryRemoveFood(cmd.Food))
+                {
+                    cmd.Cancel();
+                    continue;
+                }
 
                 bool done = false;
-                FlyToOrderSlot(food, validTray, validSlot, () => done = true);
+                ExecuteOrderCommand(cmd, () => done = true);
 
                 yield return new WaitUntil(() => done);
                 yield return new WaitForSeconds(autoMatchStaggerDelay);
@@ -179,92 +333,24 @@ namespace FoodMatch.Food
             _isAutoMatching = false;
         }
 
-        // ─── Bay lên OrderTray ────────────────────────────────────────────────
+        #endregion
 
-        private void FlyToOrderSlot(FoodItem food, OrderTray orderTray,
-                                    int slotIndex, Action onComplete)
-        {
-            Vector3 prefabScale = food.Data.prefab.transform.localScale;
-            Vector3 targetScale = prefabScale * orderSlotScaleMultiplier;
-            Vector3 targetPos = orderTray.GetNextSlotWorldPosition();
-
-            DisableCollider(food);
-
-            DOTween.Sequence()
-                .Append(food.transform
-                    .DOJump(targetPos, orderJumpPower, orderJumpCount, orderJumpDuration)
-                    .SetEase(Ease.OutQuad))
-                .Join(food.transform
-                    .DOScale(targetScale, orderJumpDuration * 0.8f)
-                    .SetEase(Ease.InOutSine))
-                .OnComplete(() =>
-                {
-                    food.transform.position = targetPos;
-                    food.transform.localScale = targetScale;
-
-                    SpawnSparkleVFX(targetPos);
-                    orderTray.ConfirmDelivery(slotIndex);
-
-                    DOVirtual.DelayedCall(0.35f,
-                        () => PoolManager.Instance.ReturnFood(food.FoodID, food.gameObject),
-                        false);
-
-                    onComplete?.Invoke();
-                })
-                .SetUpdate(false)
-                .Play();
-        }
-
-        // ─── Bay vào BackupTray ───────────────────────────────────────────────
-
-        private void FlyToBackupTray(FoodItem food, Action onComplete)
-        {
-            if (!_backupTray.HasFreeSlot())
-            {
-                Debug.Log("[FoodFlowController] BackupTray đầy → THUA!");
-                EventBus.RaiseBackupFull();
-                PoolManager.Instance.ReturnFood(food.FoodID, food.gameObject);
-                onComplete?.Invoke();
-                return;
-            }
-
-            Vector3 prefabScale = food.Data.prefab.transform.localScale;
-            Vector3 targetScale = prefabScale * backupSlotScaleMultiplier;
-            Vector3 targetPos = _backupTray.GetNextSlotWorldPosition();
-
-            DisableCollider(food);
-
-            DOTween.Sequence()
-                .Append(food.transform
-                    .DOJump(targetPos, backupJumpPower, 1, backupJumpDuration)
-                    .SetEase(Ease.OutQuad))
-                .Join(food.transform
-                    .DOScale(targetScale, backupJumpDuration * 0.8f)
-                    .SetEase(Ease.InOutSine))
-                .OnComplete(() =>
-                {
-                    food.transform.position = targetPos;
-                    food.transform.localScale = targetScale;
-
-                    _backupTray.ReceiveFood(food);
-                    EventBus.RaiseFoodToBackup(food.Data);
-
-                    onComplete?.Invoke();
-                })
-                .SetUpdate(false)
-                .Play();
-        }
-
-        // ─── Tap food trong BackupTray (player chủ động) ──────────────────────
+        // ─────────────────────────────────────────────────────────────────────
+        #region Backup Food Tap (Player chủ động tap food trong BackupTray)
 
         private void HandleBackupFoodTapped(FoodItem food, Action onComplete)
         {
-            var matchResult = _orderQueue.TryMatchFood(food.Data.foodID);
+            int instanceId = food.GetInstanceID();
+
+            // Reserve slot order ngay lập tức
+            var matchResult = _orderQueue.TryMatchFoodWithReservation(
+                food.Data.foodID, instanceId);
 
             if (matchResult.IsMatch)
             {
                 _backupTray.TryRemoveFood(food);
-                FlyToOrderSlot(food, matchResult.Tray, matchResult.SlotIndex, onComplete);
+                var cmd = new OrderDeliveryCommand(food, matchResult.Tray, matchResult.SlotIndex);
+                ExecuteOrderCommand(cmd, onComplete);
             }
             else
             {
@@ -273,7 +359,10 @@ namespace FoodMatch.Food
             }
         }
 
-        // ─── VFX ─────────────────────────────────────────────────────────────
+        #endregion
+
+        // ─────────────────────────────────────────────────────────────────────
+        #region VFX
 
         private void SpawnSparkleVFX(Vector3 worldPos)
         {
@@ -294,10 +383,6 @@ namespace FoodMatch.Food
             PoolManager.Instance?.ReturnSparkle(vfx);
         }
 
-        private static void DisableCollider(FoodItem food)
-        {
-            var col = food.GetComponent<Collider>();
-            if (col != null) col.enabled = false;
-        }
+        #endregion
     }
 }
