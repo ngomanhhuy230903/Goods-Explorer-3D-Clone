@@ -8,10 +8,6 @@ using FoodMatch.Data;
 
 namespace FoodMatch.Order
 {
-    // ═══════════════════════════════════════════════════════════════════════════
-    //  STATE PATTERN – (giữ nguyên các state, thêm reservation-aware slot logic)
-    // ═══════════════════════════════════════════════════════════════════════════
-
     public abstract class OrderTrayState
     {
         protected OrderTray Owner { get; }
@@ -85,7 +81,6 @@ namespace FoodMatch.Order
             Owner.transform.DOPunchScale(Vector3.one * 0.22f, 0.45f, 7, 0.5f).SetUpdate(true);
             _vfxRoot?.SetActive(true);
 
-            // Xóa toàn bộ reservation của tray này khi complete
             SlotReservationRegistry.Instance.ClearOrderTray(Owner.TrayIndex);
 
             Owner.RaiseCompleted();
@@ -242,8 +237,6 @@ namespace FoodMatch.Order
         /// Thử match food VÀ reserve slot ngay lập tức.
         /// Nếu slot tiếp theo đã bị reserve, tìm slot kế tiếp còn trống.
         /// Trả về -1 nếu không còn slot nào.
-        ///
-        /// QUAN TRỌNG: Reserve ngay trong cùng frame với check → tránh race condition.
         /// </summary>
         public bool TryMatchAndReserve(int foodID, int foodItemInstanceId, out int reservedSlotIndex)
         {

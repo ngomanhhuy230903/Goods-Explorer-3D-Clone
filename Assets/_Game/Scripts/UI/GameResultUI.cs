@@ -7,14 +7,6 @@ namespace FoodMatch.UI
 {
     /// <summary>
     /// Gắn vào GameObject "GameResultUI" — con của MainCanvas.
-    ///
-    /// FIX "Screen Space - Camera" bị 3D object che popup:
-    ///   Tự động tạo "PopupCanvas" riêng với Render Mode = Screen Space - Overlay
-    ///   và Sort Order = 999. PopupWin/PopupLose/OverlayDim được reparent vào đây
-    ///   lúc runtime → luôn render TRÊN mọi thứ bao gồm cả object 3D.
-    ///
-    /// FIX ẩn 3D objects:
-    ///   Gán foodGridObject trong Inspector → tự ẩn khi Win/Lose.
     /// </summary>
     public class GameResultUI : MonoBehaviour
     {
@@ -45,7 +37,7 @@ namespace FoodMatch.UI
 
         // ─── Runtime ──────────────────────────────────────────────────────────
         private bool _isShowing = false;
-        private Canvas _popupCanvas = null; // Canvas Overlay riêng cho popup
+        private Canvas _popupCanvas = null;
 
         // ─────────────────────────────────────────────────────────────────────
         private void Awake()
@@ -57,8 +49,6 @@ namespace FoodMatch.UI
 
         private void OnEnable() => GameManager.OnGameStateChanged += HandleStateChanged;
         private void OnDisable() => GameManager.OnGameStateChanged -= HandleStateChanged;
-
-        // ─── Tạo Canvas Overlay riêng ─────────────────────────────────────────
 
         /// <summary>
         /// Tạo 1 Canvas "Screen Space - Overlay" độc lập với Sort Order = 999.
@@ -110,7 +100,6 @@ namespace FoodMatch.UI
             // Reparent
             rt.SetParent(_popupCanvas.transform, false);
 
-            // Restore transform (SetParent với worldPositionStays=false reset anchor)
             rt.anchorMin = anchorMin;
             rt.anchorMax = anchorMax;
             rt.offsetMin = offsetMin;

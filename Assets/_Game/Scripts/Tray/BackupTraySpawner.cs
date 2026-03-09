@@ -8,10 +8,6 @@ namespace FoodMatch.Tray
     /// <summary>
     /// Mở rộng BackupTray với khả năng sinh/xoá slot anchors động
     /// dựa theo LevelConfig.backupTrayCapacity.
-    ///
-    /// ► Gắn cùng GameObject với BackupTray.cs
-    /// ► SlotAnchor prefab: 1 GameObject rỗng (hoặc có placeholder visual).
-    /// ► Gọi SpawnSlots(capacity) từ LevelManager thay cho ResetTray trực tiếp.
     /// </summary>
     [RequireComponent(typeof(BackupTray))]
     public class BackupTraySpawner : MonoBehaviour
@@ -48,11 +44,10 @@ namespace FoodMatch.Tray
             // Container con giữ hierarchy gọn
             var go = new GameObject("SlotAnchors_Container");
 
-            // FIX: worldPositionStays = false để không kế thừa world scale của Canvas
             go.transform.SetParent(transform, false);
             go.transform.localPosition = Vector3.zero;
             go.transform.localRotation = Quaternion.identity;
-            go.transform.localScale = Vector3.one; // ← Reset tường minh tránh Canvas scale
+            go.transform.localScale = Vector3.one;
 
             _slotContainer = go.transform;
 
@@ -94,7 +89,6 @@ namespace FoodMatch.Tray
         {
             int newTotal = _activeSlotAnchors.Count + 1;
 
-            // FIX: Dùng DOLocalMove thay DOMove để đúng trong UI local space
             for (int i = 0; i < _activeSlotAnchors.Count; i++)
             {
                 Vector3 targetLocalPos = CalculateSlotLocalPos(i, newTotal);
@@ -118,18 +112,12 @@ namespace FoodMatch.Tray
         // ─── Spawn / Pool Logic ───────────────────────────────────────────────
         private GameObject SpawnOneSlot(int index, int totalCount, bool animate)
         {
-            // FIX: Lấy từ pool tại origin, KHÔNG set world position trước
+
             var anchor = _slotPool.Get(Vector3.zero);
-
-            // FIX: SetParent với worldPositionStays = false → giữ local space, tránh Canvas scale
             anchor.transform.SetParent(_slotContainer, false);
-
-            // FIX: Reset scale sau SetParent (phòng trường hợp pool object bị dirty scale)
             anchor.transform.localScale = Vector3.one;
             anchor.transform.localRotation = Quaternion.identity;
             anchor.name = $"SlotAnchor_{index}";
-
-            // FIX: Đặt LOCAL position thay vì world position
             anchor.transform.localPosition = CalculateSlotLocalPos(index, totalCount);
 
             if (animate)
@@ -147,7 +135,6 @@ namespace FoodMatch.Tray
         {
             // ReturnAll trả về pool và clear list (theo API ObjectPool của bạn)
             _slotPool.ReturnAll(_activeSlotAnchors);
-            // _activeSlotAnchors đã được clear bởi ReturnAll
         }
 
         // ─── Layout ───────────────────────────────────────────────────────────
@@ -176,31 +163,5 @@ namespace FoodMatch.Tray
                 transforms.Add(go.transform);
             _backupTray.SetSlotAnchors(transforms);
         }
-
-        // ─── Editor Preview ───────────────────────────────────────────────────
-#if UNITY_EDITOR
-        private void OnDrawGizmosSelected()
-        {
-            Gizmos.color = new Color(0.2f, 0.8f, 0.2f, 0.7f);
-
-            // Nếu đã runtime thì vẽ slot thực
-            if (_activeSlotAnchors != null && _activeSlotAnchors.Count > 0)
-            {
-                foreach (var a in _activeSlotAnchors)
-                    if (a != null)
-                        Gizmos.DrawWireCube(a.transform.position, Vector3.one * 0.4f);
-                return;
-            }
-
-            // Editor time: vẽ preview với capacity mặc định = 5
-            // Chuyển local → world để Gizmos vẽ đúng
-            for (int i = 0; i < 5; i++)
-            {
-                Vector3 localPos = CalculateSlotLocalPos(i, 5);
-                Vector3 worldPos = transform.TransformPoint(localPos);
-                Gizmos.DrawWireCube(worldPos, Vector3.one * 0.4f);
-            }
-        }
-#endif
     }
 }

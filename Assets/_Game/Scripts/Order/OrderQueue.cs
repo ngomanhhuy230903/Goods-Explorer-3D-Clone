@@ -7,9 +7,6 @@ using FoodMatch.Data;
 
 namespace FoodMatch.Order
 {
-    // ═══════════════════════════════════════════════════════════════════════════
-    //  STRATEGY PATTERN
-    // ═══════════════════════════════════════════════════════════════════════════
     public interface ILayoutStrategy
     {
         Vector2 CalculatePosition(int index, int totalCount);
@@ -28,10 +25,6 @@ namespace FoodMatch.Order
             return new Vector2(startX + index * _spacing, 0f);
         }
     }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    //  BUILDER PATTERN
-    // ═══════════════════════════════════════════════════════════════════════════
     public sealed class OrderDataBuilder
     {
         private FoodItemData _food;
@@ -240,14 +233,6 @@ namespace FoodMatch.Order
 
         /// <summary>
         /// Xây dựng canonical food list từ config.
-        ///
-        /// QUAN TRỌNG: config.totalFoodCount đã được LevelGeneratorEditor tính
-        /// sao cho totalFood = (gridCapacity / divisor) * divisor
-        /// với divisor = foodTypes * 3 → chia đều hoàn toàn, không bao giờ thừa capacity.
-        ///
-        /// Ở đây chỉ cần tin vào totalFood và chia đều theo typeCount.
-        /// Nếu vì lý do nào totalFood không chia hết cho typeCount*3
-        /// (ví dụ config cũ chưa gen lại), tự điều chỉnh xuống để an toàn.
         /// </summary>
         private List<FoodItemData> BuildCanonicalFoodList(LevelConfig config)
         {
@@ -341,11 +326,6 @@ namespace FoodMatch.Order
 
             tray.Initialize(orderData, slotIdx, targetPos, enterFromTop: true);
             Log($"Spawn tray slot={slotIdx} pos={targetPos} foodID={orderData.FoodID}");
-
-            // ── FIX BUG 2: Raise event để FoodFlowController scan BackupTray ──
-            // Khi order mới xuất hiện, food trong BackupTray có thể đã match được
-            // nhưng chưa tự bay lên vì chưa có event trigger. Raise ở đây để
-            // HandleNewOrderActive trong FoodFlowController chạy auto-match ngay.
             EventBus.RaiseNewOrderActive(orderData.FoodID);
         }
 

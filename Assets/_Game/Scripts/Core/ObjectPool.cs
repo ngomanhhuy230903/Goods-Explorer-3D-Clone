@@ -8,7 +8,7 @@ namespace FoodMatch.Core
         private readonly GameObject _prefab;
         private readonly Transform _container;
         private readonly Queue<GameObject> _pool = new Queue<GameObject>();
-        private readonly HashSet<int> _inPoolSet = new HashSet<int>(); // ← THÊM
+        private readonly HashSet<int> _inPoolSet = new HashSet<int>();
 
         public ObjectPool(GameObject prefab, Transform container, int preloadCount = 0)
         {
@@ -19,7 +19,7 @@ namespace FoodMatch.Core
                 var obj = CreateNew();
                 obj.SetActive(false);
                 _pool.Enqueue(obj);
-                _inPoolSet.Add(obj.GetInstanceID()); // ← THÊM
+                _inPoolSet.Add(obj.GetInstanceID());
             }
         }
 
@@ -31,7 +31,7 @@ namespace FoodMatch.Core
                 var candidate = _pool.Dequeue();
                 if (candidate != null)
                 {
-                    _inPoolSet.Remove(candidate.GetInstanceID()); // ← THÊM
+                    _inPoolSet.Remove(candidate.GetInstanceID());
                     obj = candidate;
                     break;
                 }
@@ -57,7 +57,6 @@ namespace FoodMatch.Core
         {
             if (obj == null) return;
 
-            // ← THÊM: guard chống double-return
             int id = obj.GetInstanceID();
             if (_inPoolSet.Contains(id))
             {
@@ -73,7 +72,7 @@ namespace FoodMatch.Core
                 poolable.OnDespawn();
 
             _pool.Enqueue(obj);
-            _inPoolSet.Add(id); // ← THÊM
+            _inPoolSet.Add(id);
         }
 
         public void ReturnAll(List<GameObject> activeList)

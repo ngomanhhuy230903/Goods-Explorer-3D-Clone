@@ -6,8 +6,6 @@ namespace FoodMatch.Core
     /// <summary>
     /// Registry lưu trữ trạng thái "đặt chỗ" của từng slot trong OrderTray và BackupTray.
     /// Slot được reserve ngay khi bắt đầu animation bay → tránh collision.
-    ///
-    /// KEY INSIGHT: Tách biệt "reserved" (đang bay) vs "confirmed" (đã đến nơi).
     /// </summary>
     public class SlotReservationRegistry
     {

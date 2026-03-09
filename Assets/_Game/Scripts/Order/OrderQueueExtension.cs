@@ -1,7 +1,4 @@
-﻿// OrderQueueExtension.cs
-// IOrderTrayProvider đã được định nghĩa trong OrderQueue.cs → file này chỉ giữ extension method.
-
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using FoodMatch.Core;
 

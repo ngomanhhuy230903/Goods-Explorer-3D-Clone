@@ -13,89 +13,103 @@ namespace FoodMatch.Tray
         [Header("─── Layer Anchors ────────────────────")]
         [SerializeField] private List<Transform> layer0Anchors = new();
         [SerializeField] private List<Transform> layer1Anchors = new();
-        [SerializeField] private List<Transform> layer2Anchors = new();
 
         // ─── Runtime ──────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// _stacks[0] = layer 0 (spawned, interactive)
+        /// _stacks[1] = layer 1 (spawned, greyed-out)
+        /// Layer 2 chỉ lưu DATA, chưa spawn GameObject cho đến khi cần promote.
+        /// </summary>
         private readonly List<FoodItem>[] _stacks =
         {
-            new List<FoodItem>(),
-            new List<FoodItem>(),
-            new List<FoodItem>()
+            new List<FoodItem>(),   // layer 0
+            new List<FoodItem>(),   // layer 1
         };
 
+        /// <summary>
+        /// Data-only cho layer 2. Chưa spawn GameObject.
+        /// Sẽ được spawn khi layer 1 promote lên layer 0.
+        /// </summary>
+        private readonly List<FoodItemData> _pendingLayer2 = new();
+
         private readonly Dictionary<FoodItem, Transform> _itemAnchorMap = new();
+
+        // Cache neutralContainer để dùng khi spawn layer 2 lazily
+        private Transform _neutralContainer;
 
         public int TrayID { get; private set; }
         public FoodItem TopItem => _stacks[0].Count > 0 ? _stacks[0][0] : null;
         public bool IsEmpty => TopItem == null;
-        public int TotalAnchorCapacity =>
-            layer0Anchors.Count + layer1Anchors.Count + layer2Anchors.Count;
+
+        /// <summary>
+        /// Capacity vật lý = layer 0 + layer 1 anchors thôi.
+        /// Layer 2 không cần anchor riêng — dùng lại anchor của layer 1 khi promoted.
+        /// </summary>
+        public int TotalAnchorCapacity => layer0Anchors.Count + layer1Anchors.Count;
+
+        /// <summary>
+        /// Tổng số food thực sự tray này đang "giữ" (cả spawned lẫn pending).
+        /// Dùng để FoodTraySpawner tính đúng capacity khi distribute.
+        /// </summary>
+        public int TotalFoodCount =>
+            _stacks[0].Count + _stacks[1].Count + _pendingLayer2.Count;
+
+        /// <summary>
+        /// Max food tray này có thể chứa = layer0 + layer1 + layer2
+        /// (layer2 dùng lại số slot của layer1)
+        /// </summary>
+        public int MaxFoodCapacity =>
+            layer0Anchors.Count + layer1Anchors.Count + layer1Anchors.Count;
 
         // ─── Public API ───────────────────────────────────────────────────────
 
+        /// <summary>
+        /// foods[0..layer0Count-1]          → spawn ngay vào layer 0
+        /// foods[layer0Count..layer1End-1]  → spawn ngay vào layer 1 (mờ/nhỏ)
+        /// foods[layer1End..]               → lưu vào _pendingLayer2, CHƯA spawn
+        /// </summary>
         public void SpawnFoods(List<FoodItemData> foods, int trayID,
                                Transform neutralContainer, float globalDelay = 0f)
         {
             TrayID = trayID;
+            _neutralContainer = neutralContainer;
             ClearTray();
 
-            var allAnchors = CollectAllAnchors();
-            int count = Mathf.Min(foods.Count, allAnchors.Count);
+            int l0Cap = layer0Anchors.Count;
+            int l1Cap = layer1Anchors.Count;
 
-            for (int i = 0; i < count; i++)
+            for (int i = 0; i < foods.Count; i++)
             {
                 FoodItemData data = foods[i];
                 if (data?.prefab == null) continue;
 
-                Transform anchor = allAnchors[i];
-                int layerIdx = GetLayerIndex(anchor);
-
-                Vector3 prefabScale = data.prefab.transform.localScale;
-
-                GameObject go = PoolManager.Instance.GetFood(data.foodID, anchor.position);
-                if (go == null) continue;
-
-                go.transform.SetParent(neutralContainer, worldPositionStays: true);
-                go.transform.localScale = prefabScale;
-                go.transform.position = anchor.position;
-
-                SlotFollower follower = go.GetComponent<SlotFollower>();
-                if (follower == null)
-                    follower = go.AddComponent<SlotFollower>();
-                follower.Follow(anchor);
-
-                FoodItem item = go.GetComponent<FoodItem>();
-                if (item == null)
+                if (i < l0Cap)
                 {
-                    Debug.LogError($"[FoodTray] '{data.foodName}' thiếu FoodItem component!");
-                    continue;
+                    // ── Layer 0: spawn + animate scale-in ─────────────────
+                    SpawnFoodItem(data, layer0Anchors[i], layerIdx: 0,
+                                  neutralContainer, spawnDelay: globalDelay + i * 0.04f);
                 }
-
-                item.Initialize(data, layerIdx);
-                item.OwnerTray = this;
-                item.SetAnchorRef(anchor);
-
-                _stacks[layerIdx].Add(item);
-                _itemAnchorMap[item] = anchor;
-
-                if (layerIdx == 0)
+                else if (i < l0Cap + l1Cap)
                 {
-                    go.transform.localScale = Vector3.zero;
-                    go.transform
-                        .DOScale(prefabScale, 0.3f)
-                        .SetDelay(globalDelay + i * 0.04f)
-                        .SetEase(Ease.OutBack)
-                        .SetUpdate(false);
+                    // ── Layer 1: spawn ngay, greyed-out, không animate ────
+                    int anchorIdx = i - l0Cap;
+                    SpawnFoodItem(data, layer1Anchors[anchorIdx], layerIdx: 1,
+                                  neutralContainer, spawnDelay: 0f);
+                }
+                else
+                {
+                    // ── Layer 2: chỉ lưu data, chưa spawn ────────────────
+                    _pendingLayer2.Add(data);
                 }
             }
         }
 
         /// <summary>
         /// Thử lấy item ra khỏi layer 0.
-        /// Sau khi remove, kiểm tra layer 0 có trống HOÀN TOÀN không:
-        ///   - Nếu trống → promote TOÀN BỘ layer 1 lên layer 0 cùng lúc,
-        ///     sau đó kiểm tra tiếp layer 1 mới có trống không → promote layer 2.
-        ///   - Nếu chưa trống → không làm gì thêm.
+        /// Sau khi remove, nếu layer 0 trống HOÀN TOÀN:
+        ///   → promote toàn bộ layer 1 lên layer 0
+        ///   → spawn layer 2 pending vào vị trí layer 1
         /// </summary>
         public FoodItem TryPopItem(FoodItem item)
         {
@@ -105,13 +119,11 @@ namespace FoodMatch.Tray
                 return null;
             }
 
-            // ── Tách item ra khỏi tray ────────────────────────────────────
             item.GetComponent<SlotFollower>()?.Unfollow();
             _itemAnchorMap.Remove(item);
             _stacks[0].Remove(item);
             item.OwnerTray = null;
 
-            // ── Kiểm tra và promote theo tầng ─────────────────────────────
             TryPromoteNextLayer();
 
             return item;
@@ -119,7 +131,7 @@ namespace FoodMatch.Tray
 
         public void ClearTray()
         {
-            for (int l = 0; l < 3; l++)
+            for (int l = 0; l < 2; l++)
             {
                 foreach (var item in _stacks[l])
                 {
@@ -129,82 +141,70 @@ namespace FoodMatch.Tray
                 }
                 _stacks[l].Clear();
             }
+            _pendingLayer2.Clear();
             _itemAnchorMap.Clear();
         }
 
         // ─── Promote Logic ────────────────────────────────────────────────────
 
         /// <summary>
-        /// Kiểm tra từng cặp tầng theo thứ tự:
-        ///   Layer 0 trống → promote TOÀN BỘ layer 1 lên, rồi kiểm tra tiếp.
-        ///   Layer 1 trống → promote TOÀN BỘ layer 2 lên.
-        /// Mỗi lần promote là promote cùng lúc tất cả item trong tầng đó.
+        /// Khi layer 0 trống hoàn toàn:
+        ///   1. Promote toàn bộ layer 1 lên layer 0 (DOMove animation)
+        ///   2. Spawn các food pending của layer 2 vào vị trí layer 1
         /// </summary>
         private void TryPromoteNextLayer()
         {
-            // Bước 1: Layer 0 vừa trống → promote toàn bộ layer 1 lên layer 0
-            if (_stacks[0].Count == 0 && _stacks[1].Count > 0)
-            {
-                PromoteEntireLayer(fromLayer: 1, toLayer: 0, toAnchors: layer0Anchors);
+            if (_stacks[0].Count != 0) return;
+            if (_stacks[1].Count == 0 && _pendingLayer2.Count == 0) return;
 
-                // Bước 2: Sau khi layer 1 đã lên hết, layer 1 giờ trống
-                // → promote toàn bộ layer 2 lên layer 1
-                if (_stacks[1].Count == 0 && _stacks[2].Count > 0)
-                {
-                    PromoteEntireLayer(fromLayer: 2, toLayer: 1, toAnchors: layer1Anchors);
-                }
-            }
-            // Trường hợp layer 0 vẫn còn item nhưng layer 1 đã trống từ trước
-            // (không xảy ra trong flow bình thường nhưng guard thêm cho chắc)
-            else if (_stacks[1].Count == 0 && _stacks[2].Count > 0)
+            // Bước 1: Promote layer 1 → layer 0
+            if (_stacks[1].Count > 0)
             {
-                PromoteEntireLayer(fromLayer: 2, toLayer: 1, toAnchors: layer1Anchors);
+                PromoteLayer1ToLayer0();
+            }
+
+            // Bước 2: Spawn pending layer 2 → vào vị trí layer 1
+            // (thực hiện sau promote để anchor layer1 đã "trống")
+            if (_pendingLayer2.Count > 0)
+            {
+                SpawnPendingLayer2();
             }
         }
 
         /// <summary>
-        /// Promote TOÀN BỘ item trong fromLayer lên toLayer cùng một lúc.
-        /// Mỗi item animate DOMove đến anchor tương ứng trong toAnchors.
-        /// Anchor được gán theo chỉ số: item[0] → anchor[0], item[1] → anchor[1], …
+        /// Promote TOÀN BỘ item trong layer 1 lên layer 0.
+        /// Mỗi item animate DOMove đến anchor layer0 tương ứng.
         /// </summary>
-        private void PromoteEntireLayer(int fromLayer, int toLayer, List<Transform> toAnchors)
+        private void PromoteLayer1ToLayer0()
         {
-            // Snapshot danh sách để tránh modify-during-iteration
-            var itemsToPromote = new List<FoodItem>(_stacks[fromLayer]);
-
-            // Xóa sạch fromLayer ngay lập tức
-            _stacks[fromLayer].Clear();
+            var itemsToPromote = new List<FoodItem>(_stacks[1]);
+            _stacks[1].Clear();
 
             for (int i = 0; i < itemsToPromote.Count; i++)
             {
                 FoodItem promoted = itemsToPromote[i];
                 if (promoted == null) continue;
 
-                // Gỡ anchor cũ
                 _itemAnchorMap.Remove(promoted);
 
-                // Tìm anchor đích trong toLayer
-                Transform targetAnchor = i < toAnchors.Count
-                    ? toAnchors[i]
-                    : GetFreeAnchor(toAnchors); // fallback nếu số anchor ít hơn item
+                Transform targetAnchor = i < layer0Anchors.Count
+                    ? layer0Anchors[i]
+                    : GetFreeAnchor(layer0Anchors);
 
                 if (targetAnchor == null)
                 {
-                    Debug.LogWarning($"[FoodTray] Không tìm được anchor đích cho item {promoted.name}!");
+                    Debug.LogWarning($"[FoodTray] Không tìm được anchor layer0 cho {promoted.name}!");
                     continue;
                 }
 
-                // Gỡ SlotFollower trước khi animate
                 SlotFollower follower = promoted.GetComponent<SlotFollower>();
                 follower?.Unfollow();
 
-                // Lưu tham chiếu cục bộ cho closure
                 FoodItem capturedItem = promoted;
                 Transform capturedAnchor = targetAnchor;
                 SlotFollower capturedFollower = follower;
                 Vector3 prefabScale = promoted.Data.prefab.transform.localScale;
 
-                // Animate đến vị trí layer mới
                 promoted.transform
                     .DOMove(targetAnchor.position, 0.3f)
                     .SetEase(Ease.OutCubic)
@@ -216,33 +216,91 @@ namespace FoodMatch.Tray
                         _itemAnchorMap[capturedItem] = capturedAnchor;
                     });
 
-                // Cập nhật visual và thêm vào stack mới ngay (không chờ animation)
-                promoted.SetLayerVisual(toLayer);
-                _stacks[toLayer].Add(promoted);
-
-                // Hiệu ứng nổi bật khi lên layer 0
-                if (toLayer == 0)
-                    TrayAnimator.PlayLayerShiftIn(promoted);
+                promoted.SetLayerVisual(0);   // trở thành layer 0: full color, full scale
+                _stacks[0].Add(promoted);
+                TrayAnimator.PlayLayerShiftIn(promoted);
             }
         }
 
+        /// <summary>
+        /// Spawn các FoodItemData đang pending trong _pendingLayer2
+        /// vào các anchor của layer 1 (nay đã trống sau khi promote).
+        /// </summary>
+        private void SpawnPendingLayer2()
+        {
+            if (_neutralContainer == null)
+            {
+                Debug.LogError("[FoodTray] _neutralContainer null — không thể spawn layer 2!");
+                return;
+            }
+
+            // Lấy snapshot rồi clear pending ngay
+            var toSpawn = new List<FoodItemData>(_pendingLayer2);
+            _pendingLayer2.Clear();
+
+            for (int i = 0; i < toSpawn.Count; i++)
+            {
+                FoodItemData data = toSpawn[i];
+                if (data?.prefab == null) continue;
+
+                Transform anchor = i < layer1Anchors.Count
+                    ? layer1Anchors[i]
+                    : GetFreeAnchor(layer1Anchors);
+
+                if (anchor == null)
+                {
+                    Debug.LogWarning($"[FoodTray] Không đủ anchor layer1 để spawn pending item {i}!");
+                    continue;
+                }
+
+                // Spawn với scale-in animation (delay nhỏ theo thứ tự)
+                SpawnFoodItem(data, anchor, layerIdx: 1,
+                              _neutralContainer, spawnDelay: i * 0.04f);
+            }
+        }
+
+        // ─── Spawn Helper ─────────────────────────────────────────────────────
+
+        private void SpawnFoodItem(FoodItemData data, Transform anchor, int layerIdx,
+                                   Transform neutralContainer, float spawnDelay)
+        {
+            Vector3 prefabScale = data.prefab.transform.localScale;
+
+            GameObject go = PoolManager.Instance.GetFood(data.foodID, anchor.position);
+            if (go == null) return;
+
+            go.transform.SetParent(neutralContainer, worldPositionStays: true);
+            go.transform.localScale = prefabScale;
+            go.transform.position = anchor.position;
+
+            SlotFollower follower = go.GetComponent<SlotFollower>();
+            if (follower == null) follower = go.AddComponent<SlotFollower>();
+            follower.Follow(anchor);
+
+            FoodItem item = go.GetComponent<FoodItem>();
+            if (item == null)
+            {
+                Debug.LogError($"[FoodTray] '{data.foodName}' thiếu FoodItem component!");
+                return;
+            }
+
+            item.Initialize(data, layerIdx);
+            item.OwnerTray = this;
+            item.SetAnchorRef(anchor);
+
+            _stacks[layerIdx].Add(item);
+            _itemAnchorMap[item] = anchor;
+
+            // Scale-in animation
+            go.transform.localScale = Vector3.zero;
+            go.transform
+                .DOScale(prefabScale, 0.3f)
+                .SetDelay(spawnDelay)
+                .SetEase(Ease.OutBack)
+                .SetUpdate(false);
+        }
+
         // ─── Helpers ──────────────────────────────────────────────────────────
-
-        private List<Transform> CollectAllAnchors()
-        {
-            var all = new List<Transform>();
-            all.AddRange(layer0Anchors);
-            all.AddRange(layer1Anchors);
-            all.AddRange(layer2Anchors);
-            return all;
-        }
-
-        private int GetLayerIndex(Transform anchor)
-        {
-            if (layer0Anchors.Contains(anchor)) return 0;
-            if (layer1Anchors.Contains(anchor)) return 1;
-            return 2;
-        }
 
         private Transform GetFreeAnchor(List<Transform> anchors)
         {

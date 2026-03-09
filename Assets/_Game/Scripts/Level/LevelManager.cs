@@ -9,17 +9,6 @@ namespace FoodMatch.Level
 {
     /// <summary>
     /// Điều phối toàn bộ vòng đời 1 level.
-    ///
-    /// THỨ TỰ INIT BẮT BUỘC:
-    ///   1. InitBackupTray          → sẵn sàng nhận food
-    ///   2. InitFoodGrid            → tạo polygon 3D (async coroutine bên trong)
-    ///   3. InitOrderQueue          → sinh SharedFoodList (SOURCE OF TRUTH)
-    ///   4. InitFoodTraySpawner     → đăng ký callback, chờ grid xong rồi tự lấy SharedFoodList
-    ///   5. InjectFoodFlowController
-    ///   6. InitProgressTracker
-    ///
-    /// FoodTraySpawner KHÔNG cần SetFoodList() nữa — tự lấy từ OrderQueue.Instance.SharedFoodList
-    /// trong callback OnGridSpawnComplete, đảm bảo luôn đồng nhất với OrderQueue.
     /// </summary>
     public class LevelManager : MonoBehaviour
     {
@@ -159,8 +148,6 @@ namespace FoodMatch.Level
         {
             if (foodTraySpawner == null) { Debug.LogWarning("[LevelManager] FoodTraySpawner chưa gán!"); return; }
 
-            // KHÔNG gọi foodTraySpawner.SetFoodList() — deprecated, không cần thiết.
-            // FoodTraySpawner tự lấy SharedFoodList từ OrderQueue.Instance trong callback.
             foodTraySpawner.SpawnFood(config);
         }
 

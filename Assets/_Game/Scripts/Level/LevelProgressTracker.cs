@@ -134,25 +134,5 @@ namespace FoodMatch.Level
         {
             UnsubscribeEvents();
         }
-
-        // ─── Debug ────────────────────────────────────────────────────────────
-#if UNITY_EDITOR
-        [ContextMenu("Debug: Force Win")]
-        private void DebugForceWin() => TriggerWin();
-
-        [ContextMenu("Debug: Force Lose")]
-        private void DebugForceLose() => TriggerLose();
-
-        [ContextMenu("Debug: Print Status")]
-        private void DebugPrintStatus()
-        {
-            Debug.Log($"[LevelProgressTracker] Status:\n" +
-                      $"  Level    : {_currentConfig?.levelIndex}\n" +
-                      $"  Orders   : {_ordersCompleted}/{_totalOrders}\n" +
-                      $"  Food giao: {_foodDelivered}\n" +
-                      $"  Progress : {Progress:P0}\n" +
-                      $"  IsOver   : {_isLevelOver}");
-        }
-#endif
     }
 }

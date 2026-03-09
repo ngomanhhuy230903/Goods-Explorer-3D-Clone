@@ -40,7 +40,6 @@ public class UIManager : MonoBehaviour
                 break;
 
             case GameState.Menu:
-                // Ẩn game panel khi về menu (phòng trường hợp từ Win/Lose về)
                 panelGame.DOKill();
                 panelGame.DOFade(0f, 0.3f).OnComplete(() => SetPanel(panelGame, false));
                 ShowHome();
@@ -51,8 +50,6 @@ public class UIManager : MonoBehaviour
                 ShowGame();
                 break;
 
-            // Win / Lose: GameResultUI tự xử lý overlay + popup
-            // UIManager không cần làm gì thêm
             case GameState.Win:
             case GameState.Lose:
                 break;

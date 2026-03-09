@@ -71,7 +71,7 @@ namespace FoodMatch.Core
             OnOrderCompleted = null;
             OnOrderLeft = null;
             OnAllOrdersCompleted = null;
-            OnNewOrderActive = null;           // ← clear event mới
+            OnNewOrderActive = null;
             OnBackupTrayWarning = null;
             OnBackupTrayFull = null;
             OnBackupTrayExpanded = null;

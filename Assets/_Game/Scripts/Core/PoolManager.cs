@@ -51,7 +51,6 @@ namespace FoodMatch.Core
                 return;
             }
             Instance = this;
-            // KHÔNG dùng DontDestroyOnLoad vì Pool gắn với Scene Game
         }
 
         private void Start()

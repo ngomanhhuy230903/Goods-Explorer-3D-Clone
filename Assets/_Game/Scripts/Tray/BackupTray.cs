@@ -6,17 +6,8 @@ using FoodMatch.Food;
 
 namespace FoodMatch.Tray
 {
-    // ═══════════════════════════════════════════════════════════════════════════
-    //  BACKUP TRAY — Reservation-aware, Observer via EventBus
-    // ═══════════════════════════════════════════════════════════════════════════
-
     /// <summary>
     /// Khay chứa đồ thừa. Slot được reserve TRƯỚC khi food bay đến để tránh collision.
-    ///
-    /// THAY ĐỔI SO VỚI VERSION CŨ:
-    ///   - TryReserveNextSlot() → reserve slot trong SlotReservationRegistry ngay lập tức
-    ///   - ReceiveFood() chỉ confirm vào slot đã reserve (không tự tìm slot nữa)
-    ///   - TryRemoveFood() cũng release reservation nếu food đang pending
     /// </summary>
     public class BackupTray : MonoBehaviour
     {
@@ -169,7 +160,6 @@ namespace FoodMatch.Tray
             CheckWarningAndLose();
         }
 
-        /// <summary>Overload legacy — tự tìm slot (ít an toàn hơn).</summary>
         public void ReceiveFood(FoodItem food)
         {
             int idx = -1;
@@ -193,7 +183,6 @@ namespace FoodMatch.Tray
             {
                 if (kv.Value != food) continue;
                 _occupants.Remove(kv.Key);
-                // Release reservation (nếu vì lý do nào đó vẫn còn)
                 SlotReservationRegistry.Instance.ReleaseBackupSlot(kv.Key);
                 Log($"TryRemoveFood: {food.Data?.foodName} from slot[{kv.Key}]");
                 CheckWarningAndLose();
@@ -309,14 +298,6 @@ namespace FoodMatch.Tray
             _warningActive = false;
         }
 
-        // ─── FIX: CheckWarningAndLose ─────────────────────────────────────────
-        // BUG CŨ: effectiveUsed = Mathf.Max(occupied, reservedCount + occupied)
-        //   → double-count khi có food đang bay (reserved chưa confirm),
-        //   khiến free = 0 dù vẫn còn slot vật lý trống → thua sai.
-        //
-        // FIX: Tách rõ occupied (confirmed) vs pendingReserved (đang bay).
-        //   Chỉ trigger THUA khi occupied >= capacity VÀ không còn food đang bay
-        //   (pendingReserved == 0) — tức là tất cả slot thực sự đã filled.
         private void CheckWarningAndLose()
         {
             int occupied = _occupants.Count;

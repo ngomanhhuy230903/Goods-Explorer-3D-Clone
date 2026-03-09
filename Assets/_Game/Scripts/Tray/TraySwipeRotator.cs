@@ -2,7 +2,7 @@
 using UnityEngine.EventSystems;
 using DG.Tweening;
 using FoodMatch.Tray;
-using FoodMatch.Level;   // GameState
+using FoodMatch.Level;
 
 namespace FoodMatch.Tray
 {
@@ -34,7 +34,6 @@ namespace FoodMatch.Tray
         [SerializeField] private float maxInertiaSpeed = 360f;
 
         // ─── Runtime ──────────────────────────────────────────────────────────
-        // Không cache cellContainer — luôn lấy fresh qua property
         private bool _isDragging = false;
         private float _lastDragX = 0f;
         private float _inertiaSpeed = 0f;
@@ -111,8 +110,6 @@ namespace FoodMatch.Tray
             _lastDragX = eventData.position.x;
             _totalDragDelta = 0f;
             _inertiaSpeed = 0f;
-
-            // Thông báo spawner: có tương tác → dừng auto-rotate
             spawner?.NotifyInteraction();
         }
 

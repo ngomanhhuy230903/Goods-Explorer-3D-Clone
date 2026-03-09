@@ -30,7 +30,7 @@ namespace FoodMatch.Data
 
         [Header("─── Layer Setup (Tầng đồ ăn) ────────")]
         [Tooltip("Số tầng (layer) chồng lên nhau. Min=2, Max=4.")]
-        [Range(2, 4)]
+        [Range(2, 5)]
         public int layerCount = 2;
 
         [Tooltip("Số cột trên mỗi hàng của khay đồ ăn.")]
@@ -67,16 +67,6 @@ namespace FoodMatch.Data
                 Debug.LogWarning($"[LevelConfig] Level {levelIndex}: " +
                                  $"totalFoodCount đã được tự động chỉnh thành {totalFoodCount} (bội số 3).");
             }
-
-            // Đảm bảo khay có đủ ô cho tất cả món
-            //int trayCapacity = trayColumns * trayRows;  
-            //if (totalFoodCount > (trayCapacity * layerCount * 3))
-            //{
-            //    Debug.LogWarning($"[LevelConfig] Level {levelIndex}: " +
-            //                     $"Tổng món ({totalFoodCount}) > sức chứa tray " +
-            //                     $"({trayColumns}x{trayRows}x{layerCount} = {trayCapacity * layerCount}). " +
-            //                     $"Hãy tăng kích thước tray hoặc giảm số món.");
-            //}
         }
 #endif
 

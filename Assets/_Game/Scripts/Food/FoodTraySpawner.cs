@@ -5,20 +5,6 @@ using FoodMatch.Order;
 
 namespace FoodMatch.Tray
 {
-    /// <summary>
-    /// Gắn cùng GameObject với FoodGridSpawner.
-    ///
-    /// SOURCE OF TRUTH: FoodTray luôn lấy OrderQueue.Instance.SharedFoodList
-    /// làm nguồn duy nhất — đảm bảo số lượng từng loại food trong FoodTray
-    /// khớp 100% với OrderQueue, không phụ thuộc thứ tự gọi từ LevelManager.
-    ///
-    /// Thứ tự gọi từ LevelManager:
-    ///   1. orderQueue.Initialize(config)     → sinh SharedFoodList
-    ///   2. foodTraySpawner.SpawnFood(config) → đăng ký callback
-    ///
-    /// SetFoodList() giữ lại để tương thích ngược nhưng không cần gọi nữa.
-    /// OnGridSpawnComplete tự lấy SharedFoodList từ OrderQueue.Instance.
-    /// </summary>
     public class FoodTraySpawner : MonoBehaviour
     {
         [Header("─── Spawn Animation ─────────────────────")]
@@ -39,14 +25,11 @@ namespace FoodMatch.Tray
         }
 
         /// <summary>
-        /// [DEPRECATED - giữ lại để LevelManager cũ không bị compile error]
-        /// Không cần gọi nữa. FoodTraySpawner tự lấy SharedFoodList
-        /// từ OrderQueue.Instance trong callback.
+        /// [DEPRECATED] Giữ lại để tương thích ngược.
         /// </summary>
         public void SetFoodList(IReadOnlyList<FoodItemData> canonicalFoodList)
         {
-            Log("SetFoodList() được gọi — không cần thiết nữa. " +
-                "FoodTraySpawner tự lấy SharedFoodList từ OrderQueue.Instance.");
+            Log("SetFoodList() được gọi — không cần thiết nữa.");
         }
 
         public void SpawnFood(LevelConfig config)
@@ -98,12 +81,10 @@ namespace FoodMatch.Tray
             List<FoodItemData> foodList = GetCanonicalFoodListCopy();
             if (foodList == null) return;
 
-            // Shuffle để vị trí spawn ngẫu nhiên, nhưng TỔNG số lượng từng loại
-            // vẫn giữ nguyên — khớp 100% với OrderQueue.
             ShuffleList(foodList);
-
             LogFoodDistribution(foodList);
 
+            // Dùng MaxFoodCapacity để tính phân phối — bao gồm cả layer 2 pending
             var distribution = DistributeToTrays(foodList);
 
             for (int i = 0; i < _trays.Count; i++)
@@ -114,7 +95,8 @@ namespace FoodMatch.Tray
                     neutralContainer: neutralContainer,
                     globalDelay: i * trayStaggerDelay);
 
-                Log($"Tray[{i}] → {distribution[i].Count} foods");
+                Log($"Tray[{i}] → {distribution[i].Count} foods " +
+                    $"(max capacity: {_trays[i].MaxFoodCapacity})");
             }
 
             Log($"Spawn xong: {foodList.Count} food → {_trays.Count} trays.");
@@ -123,24 +105,18 @@ namespace FoodMatch.Tray
 
         // ─────────────────────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Lấy copy của OrderQueue.Instance.SharedFoodList.
-        /// Copy để shuffle tự do mà không làm thay đổi source of truth.
-        /// </summary>
         private List<FoodItemData> GetCanonicalFoodListCopy()
         {
             if (OrderQueue.Instance == null)
             {
-                Debug.LogError("[FoodTraySpawner] OrderQueue.Instance là null! " +
-                               "Đảm bảo OrderQueue tồn tại trong scene.");
+                Debug.LogError("[FoodTraySpawner] OrderQueue.Instance là null!");
                 return null;
             }
 
             var shared = OrderQueue.Instance.SharedFoodList;
             if (shared == null || shared.Count == 0)
             {
-                Debug.LogError("[FoodTraySpawner] OrderQueue.SharedFoodList trống! " +
-                               "Gọi OrderQueue.Initialize(config) trước SpawnFood().");
+                Debug.LogError("[FoodTraySpawner] OrderQueue.SharedFoodList trống!");
                 return null;
             }
 
@@ -151,6 +127,11 @@ namespace FoodMatch.Tray
 
         // ─────────────────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// Phân phối food vào trays.
+        /// Dùng MaxFoodCapacity (layer0 + layer1 + layer2) thay vì
+        /// TotalAnchorCapacity (layer0 + layer1) để không drop layer 2 food.
+        /// </summary>
         private List<List<FoodItemData>> DistributeToTrays(List<FoodItemData> foodList)
         {
             int trayCount = _trays.Count;
@@ -171,17 +152,19 @@ namespace FoodMatch.Tray
                 remaining -= give;
             }
 
-            // Phân phối phần còn lại vào các tray chưa đầy
+            // Phân phối phần còn lại — kiểm tra MaxFoodCapacity (bao gồm layer 2)
             while (remaining > 0)
             {
                 var available = new List<int>();
                 for (int i = 0; i < trayCount; i++)
-                    if (result[i].Count < _trays[i].TotalAnchorCapacity)
+                    if (result[i].Count < _trays[i].MaxFoodCapacity)
                         available.Add(i);
 
                 if (available.Count == 0)
                 {
-                    Debug.LogWarning($"[FoodTraySpawner] Hết capacity! {remaining} food không được spawn.");
+                    Debug.LogWarning(
+                        $"[FoodTraySpawner] Hết capacity! {remaining} food không được spawn. " +
+                        $"Tổng MaxFoodCapacity = {GetTotalMaxCapacity()} | Food cần spawn = {foodList.Count}");
                     break;
                 }
 
@@ -194,6 +177,13 @@ namespace FoodMatch.Tray
 
         // ─────────────────────────────────────────────────────────────────────
 
+        private int GetTotalMaxCapacity()
+        {
+            int total = 0;
+            foreach (var t in _trays) total += t.MaxFoodCapacity;
+            return total;
+        }
+
         private static void ShuffleList<T>(List<T> list)
         {
             for (int i = list.Count - 1; i > 0; i--)
@@ -203,7 +193,6 @@ namespace FoodMatch.Tray
             }
         }
 
-        /// <summary>Log số lượng từng loại food để verify đồng nhất với OrderQueue.</summary>
         private void LogFoodDistribution(List<FoodItemData> foodList)
         {
             if (!verboseLog) return;
