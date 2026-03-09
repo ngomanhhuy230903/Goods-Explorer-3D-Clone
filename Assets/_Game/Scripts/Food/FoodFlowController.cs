@@ -263,6 +263,10 @@ namespace FoodMatch.Food
         /// <summary>
         /// Observer callback khi OrderQueue kích hoạt order mới.
         /// Scan BackupTray tìm matching food và auto-fly lên OrderTray.
+        ///
+        /// FIX: Bỏ guard "if (!_isAutoMatching)" — cho phép start coroutine mới
+        /// song song khi order mới xuất hiện trong lúc đang auto-match order khác.
+        /// AutoMatchCoroutine validate từng cmd trước khi execute nên an toàn.
         /// </summary>
         private void HandleNewOrderActive(int newOrderFoodID)
         {
@@ -290,8 +294,10 @@ namespace FoodMatch.Food
 
             if (commandQueue.Count == 0) return;
 
-            if (!_isAutoMatching)
-                StartCoroutine(AutoMatchCoroutine(commandQueue));
+            // ── FIX: Không block bằng _isAutoMatching ────────────────────────
+            // Mỗi coroutine xử lý batch độc lập của mình.
+            // TryMatchFoodWithReservation đã reserve slot nên không có race condition.
+            StartCoroutine(AutoMatchCoroutine(commandQueue));
         }
 
         private IEnumerator AutoMatchCoroutine(Queue<OrderDeliveryCommand> commandQueue)

@@ -341,6 +341,12 @@ namespace FoodMatch.Order
 
             tray.Initialize(orderData, slotIdx, targetPos, enterFromTop: true);
             Log($"Spawn tray slot={slotIdx} pos={targetPos} foodID={orderData.FoodID}");
+
+            // ── FIX BUG 2: Raise event để FoodFlowController scan BackupTray ──
+            // Khi order mới xuất hiện, food trong BackupTray có thể đã match được
+            // nhưng chưa tự bay lên vì chưa có event trigger. Raise ở đây để
+            // HandleNewOrderActive trong FoodFlowController chạy auto-match ngay.
+            EventBus.RaiseNewOrderActive(orderData.FoodID);
         }
 
         // ═════════════════════════════════════════════════════════════════════

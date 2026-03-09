@@ -309,25 +309,41 @@ namespace FoodMatch.Tray
             _warningActive = false;
         }
 
+        // ─── FIX: CheckWarningAndLose ─────────────────────────────────────────
+        // BUG CŨ: effectiveUsed = Mathf.Max(occupied, reservedCount + occupied)
+        //   → double-count khi có food đang bay (reserved chưa confirm),
+        //   khiến free = 0 dù vẫn còn slot vật lý trống → thua sai.
+        //
+        // FIX: Tách rõ occupied (confirmed) vs pendingReserved (đang bay).
+        //   Chỉ trigger THUA khi occupied >= capacity VÀ không còn food đang bay
+        //   (pendingReserved == 0) — tức là tất cả slot thực sự đã filled.
         private void CheckWarningAndLose()
         {
-            // Tính free = capacity - (occupied + reserved chưa confirm)
-            int reservedCount = 0;
-            for (int i = 0; i < _capacity; i++)
-                if (SlotReservationRegistry.Instance.IsBackupSlotReserved(i)) reservedCount++;
-
             int occupied = _occupants.Count;
-            int effectiveUsed = Mathf.Max(occupied, reservedCount + occupied);
+
+            // Đếm slot đang reserved nhưng CHƯA confirmed (food đang bay đến)
+            int pendingReserved = 0;
+            for (int i = 0; i < _capacity; i++)
+            {
+                bool isOccupied = _occupants.ContainsKey(i) && _occupants[i] != null;
+                bool isReserved = SlotReservationRegistry.Instance.IsBackupSlotReserved(i);
+                // Chỉ đếm reserved nếu slot đó CHƯA confirmed (tránh double-count)
+                if (!isOccupied && isReserved) pendingReserved++;
+            }
+
+            int effectiveUsed = occupied + pendingReserved;
             int free = _capacity - effectiveUsed;
 
-            if (free <= 0)
+            // Chỉ thua khi TẤT CẢ slot đã CONFIRMED đầy (không còn food đang bay)
+            // pendingReserved == 0 đảm bảo không trigger sớm khi food cuối vẫn đang animate
+            if (occupied >= _capacity && pendingReserved == 0)
             {
                 Log("BACKUP TRAY ĐẦY → THUA!");
                 EventBus.RaiseBackupFull();
                 return;
             }
 
-            if (free <= warningThreshold && !_warningActive)
+            if (free <= warningThreshold && free > 0 && !_warningActive)
             {
                 _warningActive = true;
                 Log($"CẢNH BÁO: {free} slots còn trống!");
