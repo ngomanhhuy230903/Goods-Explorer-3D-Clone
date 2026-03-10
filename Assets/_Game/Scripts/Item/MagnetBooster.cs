@@ -56,13 +56,28 @@ namespace FoodMatch.Items
                 yield break;
             }
 
+            // ── Cache slotIndex + scale TRƯỚC khi bất kỳ animation nào chạy ──
+            // DeliveredCount chưa tăng trong lúc nhiều food bay song song
+            // → phải tính slot từng cái một tại đây
+            int baseDelivered = targetTray.OrderData.DeliveredCount;
+
             for (int i = 0; i < foods.Count; i++)
             {
                 var entry = foods[i];
+                int slot = Mathf.Clamp(baseDelivered + i, 0, targetTray.OrderData.TotalRequired - 1);
                 float delay = i * StaggerDelay;
+
+                // ── Dùng ĐÚNG công thức scale của FoodFlowController ──────────
+                // FoodFlowController.ExecuteOrderCommand:
+                //   targetScale = prefabScale * orderSlotScaleMultiplier
+                // → gọi FoodFlowController.Instance.GetOrderTargetScale() để lấy
+                //   cùng giá trị, thay vì tự tính lại (dễ lệch nếu multiplier thay đổi)
+                Vector3 cachedScale = FoodFlowController.Instance != null
+                    ? FoodFlowController.Instance.GetOrderTargetScale(entry.Data)
+                    : entry.Data.prefab.transform.localScale * 0.85f; // fallback
+
                 _runner.StartCoroutine(
-                    AnimateSingleFood(entry, targetTray,
-                        targetTray.OrderData.DeliveredCount + i, delay));
+                    AnimateSingleFood(entry, targetTray, slot, cachedScale, delay));
             }
 
             yield return new WaitForSeconds(
@@ -72,7 +87,8 @@ namespace FoodMatch.Items
         }
 
         private IEnumerator AnimateSingleFood(
-            FoodEntry entry, OrderTray targetTray, int rawSlot, float delay)
+            FoodEntry entry, OrderTray targetTray,
+            int slotIndex, Vector3 targetScale, float delay)
         {
             yield return new WaitForSeconds(delay);
 
@@ -80,6 +96,7 @@ namespace FoodMatch.Items
 
             if (food == null)
             {
+                // Layer 2 pending → spawn mới từ pool
                 food = SpawnFoodFromData(entry.Data);
                 if (food == null) yield break;
                 entry.OwnerTray?.RemovePendingFood(entry.Data);
@@ -96,30 +113,24 @@ namespace FoodMatch.Items
                     yield break;
                 }
 
+                // Food ở layer 1 (xám/nhỏ) → restore visual về layer 0 trước khi bay
                 if (entry.LayerIndex >= 1)
                 {
                     food.SetLayerVisual(0);
-                    Vector3 prefabScaleRestore = food.Data.prefab.transform.localScale;
+                    // Restore về prefab scale gốc rồi mới scale về targetScale khi bay
                     food.transform
-                        .DOScale(prefabScaleRestore, RestoreColorDuration)
+                        .DOScale(food.Data.prefab.transform.localScale, RestoreColorDuration)
                         .SetEase(Ease.OutBack);
                     yield return new WaitForSeconds(RestoreColorDuration);
                 }
             }
 
-            int slotIndex = Mathf.Clamp(
-                rawSlot, 0, targetTray.OrderData.TotalRequired - 1);
-
             Vector3 targetPos = targetTray.GetSlotWorldPosition(slotIndex);
-
-            // ── Cache scale ĐÚNG tại thời điểm này ───────────────────────────────
-            // GetNextSlotFoodScale() phụ thuộc DeliveredCount → cache ngay trước khi confirm
-            // Scale = prefabScale * orderSlotScaleMultiplier (lấy từ OrderSlotUI)
-            Vector3 targetScale = GetCorrectOrderSlotScale(food, targetTray, slotIndex);
 
             food.transform.DOKill();
 
-            // Scale về targetScale TRONG LÚC BAY (không đợi OnComplete)
+            // Scale thu nhỏ về đúng kích cỡ order slot TRONG LÚC BAY
+            // (giống hệt FoodFlowController.ExecuteOrderCommand)
             food.transform
                 .DOScale(targetScale, FlyDuration * 0.6f)
                 .SetEase(Ease.InOutSine);
@@ -131,8 +142,8 @@ namespace FoodMatch.Items
                 {
                     if (food == null || targetTray == null) return;
 
-            // Hard set scale đúng sau khi đến nơi
-            food.transform.localScale = targetScale;
+                    // Hard-set để tránh sub-frame drift
+                    food.transform.localScale = targetScale;
                     targetTray.ConfirmDelivery(slotIndex);
 
                     DOVirtual.DelayedCall(0.35f, () =>
@@ -143,27 +154,6 @@ namespace FoodMatch.Items
                 });
         }
 
-        /// <summary>
-        /// Tính scale đúng cho food khi nằm trong OrderTray slot.
-        /// OrderSlotUI.FoodTargetScale đã nhân sẵn multiplier.
-        /// Fallback: prefabScale * 0.85f nếu không lấy được.
-        /// </summary>
-        private Vector3 GetCorrectOrderSlotScale(FoodItem food, OrderTray targetTray, int slotIndex)
-        {
-            // Thử lấy từ OrderTray.GetNextSlotFoodScale() — đây là scale chuẩn
-            Vector3 slotScale = targetTray.GetNextSlotFoodScale();
-
-            // Validate: nếu scale quá nhỏ hoặc zero thì fallback
-            if (slotScale.sqrMagnitude < 0.001f)
-            {
-                Vector3 prefabScale = food.Data?.prefab != null
-                    ? food.Data.prefab.transform.localScale
-                    : Vector3.one;
-                return prefabScale * 0.85f;
-            }
-
-            return slotScale;
-        }
         private FoodItem SpawnFoodFromData(FoodItemData data)
         {
             if (data == null) return null;
@@ -180,40 +170,30 @@ namespace FoodMatch.Items
             var result = new List<FoodEntry>();
             var allFoods = _gridSpawner.GetAllActiveFoods();
 
-            // Layer 0
-            foreach (var f in allFoods)
+            foreach (var f in allFoods)   // Layer 0 ưu tiên
             {
                 if (result.Count >= count) break;
-                if (f.OwnerTray == null || f.FoodID != foodID) continue;
-                if (f.LayerIndex == 0)
-                    result.Add(new FoodEntry
-                    { FoodItem = f, Data = f.Data, LayerIndex = 0, OwnerTray = f.OwnerTray });
+                if (f.OwnerTray == null || f.FoodID != foodID || f.LayerIndex != 0) continue;
+                result.Add(new FoodEntry { FoodItem = f, Data = f.Data, LayerIndex = 0, OwnerTray = f.OwnerTray });
             }
 
-            // Layer 1
             if (result.Count < count)
             {
-                foreach (var f in allFoods)
+                foreach (var f in allFoods)   // Layer 1
                 {
                     if (result.Count >= count) break;
-                    if (f.OwnerTray == null || f.FoodID != foodID) continue;
-                    if (f.LayerIndex == 1)
-                        result.Add(new FoodEntry
-                        { FoodItem = f, Data = f.Data, LayerIndex = 1, OwnerTray = f.OwnerTray });
+                    if (f.OwnerTray == null || f.FoodID != foodID || f.LayerIndex != 1) continue;
+                    result.Add(new FoodEntry { FoodItem = f, Data = f.Data, LayerIndex = 1, OwnerTray = f.OwnerTray });
                 }
             }
 
-            // Layer 2+ (pending data)
             if (result.Count < count)
             {
                 var pending = _gridSpawner.GetPendingFoodsOfType(foodID);
                 foreach (var data in pending)
                 {
                     if (result.Count >= count) break;
-                    // Tìm tray chứa pending data này
-                    var ownerTray = FindTrayWithPending(data);
-                    result.Add(new FoodEntry
-                    { FoodItem = null, Data = data, LayerIndex = 2, OwnerTray = ownerTray });
+                    result.Add(new FoodEntry { FoodItem = null, Data = data, LayerIndex = 2, OwnerTray = FindTrayWithPending(data) });
                 }
             }
 
@@ -239,11 +219,7 @@ namespace FoodMatch.Items
                 if (tray == null) continue;
                 if (tray.CurrentStateId != OrderTrayStateId.Active) continue;
                 if (tray.RemainingCount <= 0) continue;
-                if (tray.TrayIndex < minIndex)
-                {
-                    minIndex = tray.TrayIndex;
-                    oldest = tray;
-                }
+                if (tray.TrayIndex < minIndex) { minIndex = tray.TrayIndex; oldest = tray; }
             }
             return oldest;
         }

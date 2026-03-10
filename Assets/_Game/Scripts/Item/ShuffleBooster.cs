@@ -39,20 +39,22 @@ namespace FoodMatch.Items
             var allFoods = _gridSpawner.GetAllActiveFoods();
             if (allFoods.Count < 2) yield break;
 
-            // ── Bước 1: DỪNG AUTO-ROTATE trước khi làm bất cứ thứ gì ─────────
-            // Nếu foodtray đang xoay → slot position thay đổi mỗi frame
-            // → food spawn xong sẽ bị "trượt" về vị trí đúng thay vì snap ngay
-            _gridSpawner.NotifyInteraction(); // reset idle timer + dừng auto-rotate
+            // ── Bước 1: DỪNG AUTO-ROTATE ─────────────────────────────────────
+            _gridSpawner.NotifyInteraction();
 
-            // Chờ 1 frame để StopAutoRotate ease-out xử lý
-            // (StopAutoRotate dùng DOTween ease-out 0.5s)
-            // Ta không cần chờ đủ 0.5s — chỉ cần dừng xoay trước khi spawn
-            yield return null;
+            // ── Bước 2: Chờ tray DỪNG HẲN trước khi snapshot ────────────────
+            // StopAutoRotate dùng ease-out 0.5s — chờ đủ để tray không còn xoay
+            // Điều này đảm bảo world position của anchor là ổn định khi ta cache
+            yield return new WaitForSeconds(0.55f);
 
-            // ── Bước 2: Snapshot slot WORLD POSITION tại frame này ────────────
-            // Cache world position ngay lúc này vì sau đó tray có thể tiếp tục xoay
-            // Quan trọng: dùng slot.position (world) không phải localPosition
+            // ── Bước 3: Snapshot slot + world position TẠI THỜI ĐIỂM NÀY ────
+            // Tray đã đứng yên → anchor.position chính xác
             var snapshots = new List<SlotSnapshot>(allFoods.Count);
+
+            // Refresh danh sách sau khi chờ (phòng có food bị remove trong lúc chờ)
+            allFoods = _gridSpawner.GetAllActiveFoods();
+            if (allFoods.Count < 2) yield break;
+
             foreach (var food in allFoods)
             {
                 var follower = food.GetComponent<SlotFollower>();
@@ -60,7 +62,6 @@ namespace FoodMatch.Items
                 snapshots.Add(new SlotSnapshot
                 {
                     Slot = slot,
-                    // Cache world position TẠI THỜI ĐIỂM NÀY
                     SlotWorldPos = slot != null ? slot.position : food.transform.position,
                     Data = food.Data,
                     LayerIndex = food.LayerIndex,
@@ -68,13 +69,13 @@ namespace FoodMatch.Items
                 });
             }
 
-            // ── Bước 3: Unfollow TẤT CẢ cùng lúc ────────────────────────────
+            // ── Bước 4: Unfollow TẤT CẢ ─────────────────────────────────────
             foreach (var food in allFoods)
                 food.GetComponent<SlotFollower>()?.Unfollow();
 
-            yield return null; // chờ LateUpdate xử lý
+            yield return null;
 
-            // ── Bước 4: Despawn TẤT CẢ cùng lúc ─────────────────────────────
+            // ── Bước 5: Despawn TẤT CẢ cùng lúc ─────────────────────────────
             foreach (var food in allFoods)
             {
                 var capturedFood = food;
@@ -91,13 +92,13 @@ namespace FoodMatch.Items
 
             yield return new WaitForSeconds(DespawnDuration + 0.05f);
 
-            // ── Bước 5: Clear stacks ──────────────────────────────────────────
+            // ── Bước 6: Clear stacks ──────────────────────────────────────────
             var allTrays = _gridSpawner.GetCellContainer()
                 .GetComponentsInChildren<FoodTray>(includeInactive: false);
             foreach (var tray in allTrays)
                 tray.ClearStacksOnly();
 
-            // ── Bước 6: Fisher-Yates shuffle SLOTS ───────────────────────────
+            // ── Bước 7: Fisher-Yates shuffle SLOTS ───────────────────────────
             var shuffledSlots = new List<Transform>(snapshots.Count);
             foreach (var s in snapshots) shuffledSlots.Add(s.Slot);
 
@@ -108,7 +109,10 @@ namespace FoodMatch.Items
                     = (shuffledSlots[j], shuffledSlots[i]);
             }
 
-            // ── Bước 7: Respawn stagger — snap ngay vào slot mới ─────────────
+            // ── Bước 8: Respawn – SNAP ngay vào world position đã cache ──────
+            // SpawnSingleFoodSnap đã snap position ngay trước khi DOTween chạy
+            // → food xuất hiện ĐÚNG VỊ TRÍ, không bị trượt về slot sau
+            // layerIndex MỚI theo slot mới → tự động áp visual đúng (màu, scale, collider)
             var neutralContainer = _gridSpawner.GetNeutralContainer();
             if (neutralContainer == null)
             {
@@ -124,24 +128,25 @@ namespace FoodMatch.Items
 
                 if (newSlot == null || snap.Data == null) continue;
 
-                // Xác định layerIndex mới dựa theo slot mới thuộc layer nào
+                // Layer mới = layer của SLOT mới (không phải layer cũ của food)
                 int newLayerIndex = GetLayerIndexOfSlot(newSlot, snap.OwnerTray);
 
+                // SpawnSingleFoodSnap:
+                //   1. GetFood từ pool → snap position = anchor.position (world, tức thì)
+                //   2. DOScale từ 0 → targetScale (theo layer mới)
+                //   3. OnComplete: snap lại 1 lần nữa + Follow(anchor mới)
+                // → không có khoảng thời gian food "lơ lửng" rồi trượt về vị trí
                 snap.OwnerTray?.SpawnSingleFoodSnap(
                     data: snap.Data,
                     anchor: newSlot,
-                    layerIdx: newLayerIndex,  // layer theo VỊ TRÍ MỚI
+                    layerIdx: newLayerIndex,
                     neutralContainer: neutralContainer,
                     spawnDelay: delay);
             }
 
-            Debug.Log($"[Shuffle] {snapshots.Count} foods respawned.");
+            Debug.Log($"[Shuffle] {snapshots.Count} foods respawned với layer đúng.");
         }
 
-        /// <summary>
-        /// Xác định slot này thuộc layer 0 hay layer 1 của FoodTray.
-        /// So sánh với danh sách layer0Anchors và layer1Anchors.
-        /// </summary>
         private int GetLayerIndexOfSlot(Transform slot, FoodTray tray)
         {
             if (tray == null) return 0;
@@ -151,7 +156,7 @@ namespace FoodMatch.Items
         private struct SlotSnapshot
         {
             public Transform Slot;
-            public Vector3 SlotWorldPos;  // cached world pos lúc snapshot
+            public Vector3 SlotWorldPos;
             public FoodItemData Data;
             public int LayerIndex;
             public FoodTray OwnerTray;

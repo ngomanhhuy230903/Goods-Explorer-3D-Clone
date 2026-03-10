@@ -322,6 +322,17 @@ namespace FoodMatch.Order
             _currentState = nextState;
             _currentState.Enter();
         }
+        /// <summary>
+        /// Trả về FoodTargetScale của slot tại <paramref name="slotIndex"/>.
+        /// MagnetBooster cache giá trị này TRƯỚC khi bất kỳ ConfirmDelivery nào được gọi
+        /// để đảm bảo từng food lấy đúng scale của slot mình sẽ đáp xuống.
+        /// </summary>
+        public Vector3 GetSlotFoodScale(int slotIndex)
+        {
+            if (slotIndex < 0 || slotIndex >= slots.Count)
+                return Vector3.one;
+            return slots[slotIndex].FoodTargetScale;
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

@@ -439,5 +439,7 @@ namespace FoodMatch.Food
 
         #endregion
         private void Log(string msg) => Debug.Log(msg);
+        public Vector3 GetOrderTargetScale(FoodItemData data)
+    => data.prefab.transform.localScale * orderSlotScaleMultiplier;
     }
 }
