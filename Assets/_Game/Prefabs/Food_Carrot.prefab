@@ -15,7 +15,7 @@ GameObject:
   - component: {fileID: 2665505416776165083}
   - component: {fileID: -716183569071760054}
   - component: {fileID: -2210070039479030834}
-  m_Layer: 0
+  m_Layer: 6
   m_Name: Food_Carrot
   m_TagString: Untagged
   m_Icon: {fileID: 0}

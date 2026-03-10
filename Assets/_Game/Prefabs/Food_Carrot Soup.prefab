@@ -15,7 +15,7 @@ GameObject:
   - component: {fileID: 4225928998432827889}
   - component: {fileID: 4882678493800072019}
   - component: {fileID: 5822879735553780527}
-  m_Layer: 0
+  m_Layer: 6
   m_Name: Food_Carrot Soup
   m_TagString: Untagged
   m_Icon: {fileID: 0}

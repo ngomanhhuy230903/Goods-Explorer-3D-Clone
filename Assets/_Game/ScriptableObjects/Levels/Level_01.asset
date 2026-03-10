@@ -15,8 +15,8 @@ MonoBehaviour:
   levelIndex: 1
   levelDisplayName: Morning Snack
   availableFoods:
-  - {fileID: 11400000, guid: ea068b17163dde146b15b39834412242, type: 2}
   - {fileID: 11400000, guid: b596eb1b196f40d43875093f91dccc44, type: 2}
+  - {fileID: 11400000, guid: f3d8108444721da41930fe1572e141e4, type: 2}
   - {fileID: 11400000, guid: 9cddf89ff4e19a14e882b9635dc24ccd, type: 2}
   totalFoodCount: 30
   layerCount: 2
