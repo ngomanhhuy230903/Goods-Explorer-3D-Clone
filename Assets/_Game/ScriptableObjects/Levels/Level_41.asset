@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 361ce6f39e3f10642ba326fd65d82e48, type: 3}
+  m_Name: Level_41
+  m_EditorClassIdentifier: 
+  levelIndex: 41
+  levelDisplayName: Food Festival
+  availableFoods:
+  - {fileID: 11400000, guid: f3d8108444721da41930fe1572e141e4, type: 2}
+  - {fileID: 11400000, guid: ea068b17163dde146b15b39834412242, type: 2}
+  - {fileID: 11400000, guid: 38037827fc24ccd43ba648e802edca91, type: 2}
+  - {fileID: 11400000, guid: b596eb1b196f40d43875093f91dccc44, type: 2}
+  - {fileID: 11400000, guid: 204ce4b5e8cbd7f44841b837aa70d70e, type: 2}
+  - {fileID: 11400000, guid: 9cddf89ff4e19a14e882b9635dc24ccd, type: 2}
+  - {fileID: 11400000, guid: bb4cd877240b04443b2f6c7a25bfd65a, type: 2}
+  - {fileID: 11400000, guid: f973e257b39d2b5409d381c02b2ba426, type: 2}
+  totalFoodCount: 357
+  layerCount: 5
+  trayColumns: 5
+  trayRows: 5
+  maxActiveOrders: 2
+  backupTrayCapacity: 5
+  timeLimitSeconds: 0
