@@ -86,20 +86,17 @@ namespace FoodMatch.Tray
 
                 if (i < l0Cap)
                 {
-                    // ── Layer 0: spawn + animate scale-in ─────────────────
                     SpawnFoodItem(data, layer0Anchors[i], layerIdx: 0,
                                   neutralContainer, spawnDelay: globalDelay + i * 0.04f);
                 }
                 else if (i < l0Cap + l1Cap)
                 {
-                    // ── Layer 1: spawn ngay, greyed-out, không animate ────
                     int anchorIdx = i - l0Cap;
                     SpawnFoodItem(data, layer1Anchors[anchorIdx], layerIdx: 1,
                                   neutralContainer, spawnDelay: 0f);
                 }
                 else
                 {
-                    // ── Layer 2: chỉ lưu data, chưa spawn ────────────────
                     _pendingLayer2.Add(data);
                 }
             }
@@ -128,6 +125,7 @@ namespace FoodMatch.Tray
 
             return item;
         }
+
         /// <summary>
         /// MagnetBooster dùng: remove food khỏi bất kỳ layer nào (0, 1).
         /// KHÔNG trigger promote — Magnet tự lo animation và flow.
@@ -144,14 +142,12 @@ namespace FoodMatch.Tray
                 _stacks[l].Remove(item);
                 item.OwnerTray = null;
 
-                // Trigger promote nếu layer 0 trống SAU KHI remove
-                // (chỉ trigger khi remove từ layer 0)
                 if (l == 0) TryPromoteNextLayer();
 
                 return true;
             }
 
-            return false; // không tìm thấy trong bất kỳ layer nào
+            return false;
         }
 
         public void ClearTray()
@@ -169,6 +165,7 @@ namespace FoodMatch.Tray
             _pendingLayer2.Clear();
             _itemAnchorMap.Clear();
         }
+
         /// <summary>
         /// Chỉ clear internal stacks/maps mà KHÔNG return food về pool.
         /// Dùng bởi ShuffleBooster sau khi đã tự return pool ở bước despawn.
@@ -188,6 +185,27 @@ namespace FoodMatch.Tray
             _pendingLayer2.Clear();
             _itemAnchorMap.Clear();
         }
+
+        /// <summary>
+        /// Clear stacks (không return pool) + pending layer 2.
+        /// ShuffleBooster gọi sau khi đã gom toàn bộ data vào pool shuffle.
+        /// </summary>
+        public void ClearStacksAndPending()
+        {
+            for (int l = 0; l < 2; l++)
+            {
+                foreach (var item in _stacks[l])
+                {
+                    if (item == null) continue;
+                    item.GetComponent<SlotFollower>()?.Unfollow();
+                    item.OwnerTray = null;
+                }
+                _stacks[l].Clear();
+            }
+            _pendingLayer2.Clear();
+            _itemAnchorMap.Clear();
+        }
+
         /// <summary>
         /// Trả về pending data layer 2+ theo foodID.
         /// MagnetBooster dùng để lấy food chưa spawn vào scene.
@@ -202,6 +220,12 @@ namespace FoodMatch.Tray
         }
 
         /// <summary>
+        /// Trả về TOÀN BỘ pending data layer 2 (không lọc theo foodID).
+        /// ShuffleBooster gom vào pool chung trước khi shuffle.
+        /// </summary>
+        public IReadOnlyList<FoodItemData> GetAllPendingData() => _pendingLayer2;
+
+        /// <summary>
         /// Remove 1 pending food data khỏi layer 2 queue.
         /// Gọi sau khi MagnetBooster đã spawn và gửi food đó lên order.
         /// </summary>
@@ -209,10 +233,10 @@ namespace FoodMatch.Tray
         {
             return _pendingLayer2.Remove(data);
         }
+
         /// <summary>
         /// Spawn 1 food vào đúng anchor + layer.
         /// ShuffleBooster dùng sau khi shuffle slot.
-        /// ĐẢM BẢO SlotFollower.Follow() được gọi sau khi spawn xong.
         /// </summary>
         public void SpawnSingleFood(FoodItemData data, Transform anchor,
                                     int layerIdx, Transform neutralContainer,
@@ -221,39 +245,122 @@ namespace FoodMatch.Tray
             if (_neutralContainer == null)
                 _neutralContainer = neutralContainer;
 
-            // Dùng SpawnFoodItem có sẵn — nó đã gọi follower.Follow(anchor) bên trong
             SpawnFoodItem(data, anchor, layerIdx, neutralContainer, spawnDelay);
         }
-        // ─── Promote Logic ────────────────────────────────────────────────────
 
         /// <summary>
-        /// Khi layer 0 trống hoàn toàn:
-        ///   1. Promote toàn bộ layer 1 lên layer 0 (DOMove animation)
-        ///   2. Spawn các food pending của layer 2 vào vị trí layer 1
+        /// Spawn food + snap NGAY vào world position của anchor.
+        /// Dùng cho Shuffle: đảm bảo food xuất hiện đúng chỗ dù tray đang xoay.
+        /// LayerIndex theo anchor mới → visual đúng (màu, scale, collider).
         /// </summary>
+        public void SpawnSingleFoodSnap(FoodItemData data, Transform anchor,
+                                        int layerIdx, Transform neutralContainer,
+                                        float spawnDelay = 0f)
+        {
+            if (_neutralContainer == null)
+                _neutralContainer = neutralContainer;
+
+            Vector3 prefabScale = data.prefab.transform.localScale;
+            Vector3 spawnWorldPos = anchor.position;   // cache ngay lúc tray đứng yên
+
+            GameObject go = PoolManager.Instance.GetFood(data.foodID, spawnWorldPos);
+            if (go == null) return;
+
+            go.transform.SetParent(neutralContainer, worldPositionStays: true);
+
+            // ── SNAP position NGAY, không delay ──────────────────────────────
+            // Đây là điểm mấu chốt: position set trước bất kỳ delay nào
+            // → dù tray xoay trong khoảng spawnDelay, food đã ở đúng chỗ
+            go.transform.position = spawnWorldPos;
+            go.transform.localScale = Vector3.zero;
+
+            FoodItem item = go.GetComponent<FoodItem>();
+            if (item == null)
+            {
+                Debug.LogError($"[FoodTray] '{data.foodName}' thiếu FoodItem!");
+                return;
+            }
+
+            // Initialize với layerIdx MỚI → visual/collider đúng theo layer
+            item.Initialize(data, layerIdx);
+            item.OwnerTray = this;
+            item.SetAnchorRef(anchor);
+
+            int stackIdx = Mathf.Clamp(layerIdx, 0, 1);
+            _stacks[stackIdx].Add(item);
+            _itemAnchorMap[item] = anchor;
+
+            SlotFollower follower = go.GetComponent<SlotFollower>();
+            if (follower == null) follower = go.AddComponent<SlotFollower>();
+            follower.Unfollow(); // không follow trong lúc animate
+
+            Vector3 targetScale = layerIdx == 0 ? prefabScale : prefabScale * 0.8f;
+
+            // Chỉ scale mới delay — position đã snap sẵn
+            go.transform
+                .DOScale(targetScale, 0.3f)
+                .SetDelay(spawnDelay)
+                .SetEase(Ease.OutBack)
+                .SetUpdate(false)
+                .OnComplete(() =>
+                {
+                    if (go == null) return;
+
+                    // Snap lần 2 sau animation → triệt tiêu drift tray xoay trong delay
+                    go.transform.position = anchor.position;
+                    follower.Follow(anchor);
+                });
+        }
+
+        /// <summary>
+        /// Đăng ký FoodItem vào stack và anchor map của tray.
+        /// ShuffleBooster gọi sau khi tự spawn food vào đúng slot mới.
+        /// </summary>
+        public void RegisterToStack(FoodItem item, Transform anchor, int layerIdx)
+        {
+            int stackIdx = Mathf.Clamp(layerIdx, 0, 1);
+            if (!_stacks[stackIdx].Contains(item))
+                _stacks[stackIdx].Add(item);
+            _itemAnchorMap[item] = anchor;
+        }
+
+        /// <summary>
+        /// Trả về danh sách anchor của layer 0.
+        /// ShuffleBooster dùng để thu thập tất cả available slots.
+        /// </summary>
+        public IReadOnlyList<Transform> GetLayer0Anchors() => layer0Anchors;
+
+        /// <summary>
+        /// Trả về danh sách anchor của layer 1.
+        /// ShuffleBooster dùng để thu thập tất cả available slots.
+        /// </summary>
+        public IReadOnlyList<Transform> GetLayer1Anchors() => layer1Anchors;
+
+        /// <summary>
+        /// Trả về 0 nếu anchor thuộc layer0Anchors, 1 nếu thuộc layer1Anchors.
+        /// ShuffleBooster dùng để xác định visual của food sau khi đổi slot.
+        /// </summary>
+        public int GetLayerIndexOfAnchor(Transform anchor)
+        {
+            if (layer0Anchors.Contains(anchor)) return 0;
+            if (layer1Anchors.Contains(anchor)) return 1;
+            return 0; // fallback
+        }
+
+        // ─── Promote Logic ────────────────────────────────────────────────────
+
         private void TryPromoteNextLayer()
         {
             if (_stacks[0].Count != 0) return;
             if (_stacks[1].Count == 0 && _pendingLayer2.Count == 0) return;
 
-            // Bước 1: Promote layer 1 → layer 0
             if (_stacks[1].Count > 0)
-            {
                 PromoteLayer1ToLayer0();
-            }
 
-            // Bước 2: Spawn pending layer 2 → vào vị trí layer 1
-            // (thực hiện sau promote để anchor layer1 đã "trống")
             if (_pendingLayer2.Count > 0)
-            {
                 SpawnPendingLayer2();
-            }
         }
 
-        /// <summary>
-        /// Promote TOÀN BỘ item trong layer 1 lên layer 0.
-        /// Mỗi item animate DOMove đến anchor layer0 tương ứng.
-        /// </summary>
         private void PromoteLayer1ToLayer0()
         {
             var itemsToPromote = new List<FoodItem>(_stacks[1]);
@@ -282,8 +389,8 @@ namespace FoodMatch.Tray
                 FoodItem capturedItem = promoted;
                 Transform capturedAnchor = targetAnchor;
                 Vector3 prefabScale = promoted.Data?.prefab != null
-                                            ? promoted.Data.prefab.transform.localScale
-                                            : Vector3.one;
+                                                ? promoted.Data.prefab.transform.localScale
+                                                : Vector3.one;
 
                 promoted.transform
                     .DOMove(targetAnchor.position, 0.3f)
@@ -293,24 +400,20 @@ namespace FoodMatch.Tray
                     {
                         if (capturedItem == null) return;
 
-        capturedItem.transform.localScale = prefabScale;
+                        capturedItem.transform.localScale = prefabScale;
                         _itemAnchorMap[capturedItem] = capturedAnchor;
 
-        var f = capturedItem.GetComponent<SlotFollower>();
+                        var f = capturedItem.GetComponent<SlotFollower>();
                         if (f == null) f = capturedItem.gameObject.AddComponent<SlotFollower>();
                         f.Follow(capturedAnchor);
                     });
 
-                promoted.SetLayerVisual(0);   // trở thành layer 0: full color, full scale
+                promoted.SetLayerVisual(0);
                 _stacks[0].Add(promoted);
                 TrayAnimator.PlayLayerShiftIn(promoted);
             }
         }
 
-        /// <summary>
-        /// Spawn các FoodItemData đang pending trong _pendingLayer2
-        /// vào các anchor của layer 1 (nay đã trống sau khi promote).
-        /// </summary>
         private void SpawnPendingLayer2()
         {
             if (_neutralContainer == null)
@@ -319,7 +422,6 @@ namespace FoodMatch.Tray
                 return;
             }
 
-            // Lấy snapshot rồi clear pending ngay
             var toSpawn = new List<FoodItemData>(_pendingLayer2);
             _pendingLayer2.Clear();
 
@@ -338,7 +440,6 @@ namespace FoodMatch.Tray
                     continue;
                 }
 
-                // Spawn với scale-in animation (delay nhỏ theo thứ tự)
                 SpawnFoodItem(data, anchor, layerIdx: 1,
                               _neutralContainer, spawnDelay: i * 0.04f);
             }
@@ -356,17 +457,10 @@ namespace FoodMatch.Tray
 
             go.transform.SetParent(neutralContainer, worldPositionStays: true);
             go.transform.position = anchor.position;
-            go.transform.localScale = Vector3.zero; // bắt đầu từ 0
+            go.transform.localScale = Vector3.zero;
 
-            // ── SlotFollower: UNFOLLOW trong lúc scale-in ─────────────────────────
-            // Nếu follow ngay thì LateUpdate snap position ổn nhưng scale-in vẫn chạy
-            // → thực ra follow ngay cũng được vì LateUpdate chỉ set position, không set scale
-            // Vấn đề cũ là sau Shuffle, follower vẫn trỏ về anchor CŨ
-            // SpawnSingleFood truyền anchor MỚI → Follow(anchor mới) là đúng
             SlotFollower follower = go.GetComponent<SlotFollower>();
             if (follower == null) follower = go.AddComponent<SlotFollower>();
-
-            // Unfollow trước để tránh LateUpdate can thiệp trong frame đầu
             follower.Unfollow();
 
             FoodItem item = go.GetComponent<FoodItem>();
@@ -383,105 +477,18 @@ namespace FoodMatch.Tray
             _stacks[Mathf.Clamp(layerIdx, 0, 1)].Add(item);
             _itemAnchorMap[item] = anchor;
 
-            // Scale-in animation → sau khi xong mới Follow anchor mới
             go.transform
-                .DOScale(layerIdx == 0 ? prefabScale : prefabScale * 0.8f,
-                         0.3f)
+                .DOScale(layerIdx == 0 ? prefabScale : prefabScale * 0.8f, 0.3f)
                 .SetDelay(spawnDelay)
                 .SetEase(Ease.OutBack)
                 .SetUpdate(false)
                 .OnComplete(() =>
                 {
                     if (go == null || follower == null) return;
-
-            // Follow anchor mới sau khi animation xong
-            // → không còn bị kéo về anchor cũ
-            follower.Follow(anchor);
-                });
-        }
-        /// <summary>
-        /// Spawn food + snap NGAY vào world position của anchor.
-        /// Dùng cho Shuffle: đảm bảo food xuất hiện đúng chỗ dù tray đang xoay.
-        /// LayerIndex theo anchor mới → visual đúng (màu, scale, collider).
-        /// </summary>
-        public void SpawnSingleFoodSnap(FoodItemData data, Transform anchor,
-                                        int layerIdx, Transform neutralContainer,
-                                        float spawnDelay = 0f)
-        {
-            if (_neutralContainer == null)
-                _neutralContainer = neutralContainer;
-
-            Vector3 prefabScale = data.prefab.transform.localScale;
-
-            // Lấy world position của anchor TẠI THỜI ĐIỂM GỌI HÀM
-            // (không delay — nếu delay thì tray có thể xoay làm lệch vị trí)
-            Vector3 spawnWorldPos = anchor.position;
-
-            GameObject go = PoolManager.Instance.GetFood(data.foodID, spawnWorldPos);
-            if (go == null) return;
-
-            go.transform.SetParent(neutralContainer, worldPositionStays: true);
-
-            // SNAP ngay vào đúng world position — không để DOTween delay mới set position
-            go.transform.position = spawnWorldPos;
-
-            // Scale bắt đầu từ 0
-            go.transform.localScale = Vector3.zero;
-
-            FoodItem item = go.GetComponent<FoodItem>();
-            if (item == null)
-            {
-                Debug.LogError($"[FoodTray] '{data.foodName}' thiếu FoodItem!");
-                return;
-            }
-
-            // Initialize với layerIdx MỚI (theo vị trí mới sau shuffle)
-            // → tự động set màu, scale xám, collider đúng theo layer
-            item.Initialize(data, layerIdx);
-            item.OwnerTray = this;
-            item.SetAnchorRef(anchor);
-
-            // Thêm vào stack đúng layer
-            int stackIdx = Mathf.Clamp(layerIdx, 0, 1);
-            _stacks[stackIdx].Add(item);
-            _itemAnchorMap[item] = anchor;
-
-            // Scale target theo layer
-            Vector3 targetScale = layerIdx == 0
-                ? prefabScale           // layer 0: full size
-                : prefabScale * 0.8f;  // layer 1: nhỏ hơn (greyed)
-
-            // Scale-in animation với delay stagger
-            // OnComplete: Follow anchor → bám theo tray từ đây
-            go.transform
-                .DOScale(targetScale, 0.3f)
-                .SetDelay(spawnDelay)
-                .SetEase(Ease.OutBack)
-                .SetUpdate(false)
-                .OnComplete(() =>
-                {
-                    if (go == null) return;
-
-            // Snap lại 1 lần nữa sau animation phòng drift
-            go.transform.position = anchor.position;
-
-            // Bắt đầu follow anchor MỚI từ đây
-            SlotFollower follower = go.GetComponent<SlotFollower>();
-                    if (follower == null) follower = go.AddComponent<SlotFollower>();
                     follower.Follow(anchor);
                 });
         }
 
-        /// <summary>
-        /// Trả về 0 nếu anchor thuộc layer0Anchors, 1 nếu thuộc layer1Anchors.
-        /// ShuffleBooster dùng để xác định visual của food sau khi đổi slot.
-        /// </summary>
-        public int GetLayerIndexOfAnchor(Transform anchor)
-        {
-            if (layer0Anchors.Contains(anchor)) return 0;
-            if (layer1Anchors.Contains(anchor)) return 1;
-            return 0; // fallback
-        }
         // ─── Helpers ──────────────────────────────────────────────────────────
 
         private Transform GetFreeAnchor(List<Transform> anchors)

@@ -19,6 +19,9 @@ namespace FoodMatch.Items
 
         private const float DespawnDuration = 0.18f;
         private const float StaggerDelay = 0.04f;
+        // Thời gian chờ tray ease-out hoàn toàn dừng lại
+        // FoodGridSpawner.rotateEaseOutDuration = 0.5f → chờ thêm buffer nhỏ
+        private const float WaitForTrayStop = 0.6f;
 
         public void Initialize(BoosterContext ctx)
         {
@@ -29,90 +32,151 @@ namespace FoodMatch.Items
         public bool CanExecute()
         {
             if (_gridSpawner == null) return false;
-            return _gridSpawner.GetAllActiveFoods().Count >= 2;
+            // cellContainer chưa assign → game chưa start, không execute
+            if (_gridSpawner.GetCellContainer() == null) return false;
+            return CountTotalFoods() >= 2;
         }
 
         public void Execute() => _runner.StartCoroutine(ShuffleRoutine());
 
+        // ─────────────────────────────────────────────────────────────────────
+
         private IEnumerator ShuffleRoutine()
         {
-            var allFoods = _gridSpawner.GetAllActiveFoods();
-            if (allFoods.Count < 2) yield break;
-
-            // ── Bước 1: DỪNG AUTO-ROTATE ─────────────────────────────────────
+            // ══════════════════════════════════════════════════════════════════
+            // BƯỚC 1: Dừng auto-rotate → chờ tray đứng yên hoàn toàn
+            // ══════════════════════════════════════════════════════════════════
             _gridSpawner.NotifyInteraction();
+            yield return new WaitForSeconds(WaitForTrayStop);
 
-            // ── Bước 2: Chờ tray DỪNG HẲN trước khi snapshot ────────────────
-            // StopAutoRotate dùng ease-out 0.5s — chờ đủ để tray không còn xoay
-            // Điều này đảm bảo world position của anchor là ổn định khi ta cache
-            yield return new WaitForSeconds(0.55f);
+            // ══════════════════════════════════════════════════════════════════
+            // BƯỚC 2: Thu thập TẤT CẢ food data (spawned + pending layer 2)
+            // vào một danh sách FoodRecord duy nhất
+            // ══════════════════════════════════════════════════════════════════
+            var allTrays = _gridSpawner.GetCellContainer()
+                .GetComponentsInChildren<FoodTray>(includeInactive: false);
 
-            // ── Bước 3: Snapshot slot + world position TẠI THỜI ĐIỂM NÀY ────
-            // Tray đã đứng yên → anchor.position chính xác
-            var snapshots = new List<SlotSnapshot>(allFoods.Count);
+            // Refresh spawned foods sau khi chờ
+            var spawnedFoods = _gridSpawner.GetAllActiveFoods();
 
-            // Refresh danh sách sau khi chờ (phòng có food bị remove trong lúc chờ)
-            allFoods = _gridSpawner.GetAllActiveFoods();
-            if (allFoods.Count < 2) yield break;
+            // Gom tất cả FoodItemData (spawned + pending)
+            var allFoodData = new List<FoodItemData>();
 
-            foreach (var food in allFoods)
+            foreach (var food in spawnedFoods)
+                if (food?.Data != null) allFoodData.Add(food.Data);
+
+            foreach (var tray in allTrays)
             {
-                var follower = food.GetComponent<SlotFollower>();
-                var slot = follower?.targetSlot ?? food.AnchorRef;
-                snapshots.Add(new SlotSnapshot
-                {
-                    Slot = slot,
-                    SlotWorldPos = slot != null ? slot.position : food.transform.position,
-                    Data = food.Data,
-                    LayerIndex = food.LayerIndex,
-                    OwnerTray = food.OwnerTray,
-                });
+                // Lấy pending layer 2 từ từng tray (GetPendingFoodsOfType trả về theo foodID)
+                // Ta cần lấy ALL pending không lọc theo ID → dùng internal helper
+                var pendingAll = tray.GetAllPendingData();
+                allFoodData.AddRange(pendingAll);
             }
 
-            // ── Bước 4: Unfollow TẤT CẢ ─────────────────────────────────────
-            foreach (var food in allFoods)
+            if (allFoodData.Count < 2)
+            {
+                Debug.LogWarning("[Shuffle] Không đủ food để shuffle.");
+                yield break;
+            }
+
+            // ══════════════════════════════════════════════════════════════════
+            // BƯỚC 3: Thu thập TẤT CẢ anchor slots từ tất cả tray
+            // (layer0 + layer1) → cache world position TẠI THỜI ĐIỂM NÀY
+            // Tray đã đứng yên → positions ổn định
+            // ══════════════════════════════════════════════════════════════════
+            var allSlots = new List<SlotInfo>();
+
+            foreach (var tray in allTrays)
+            {
+                var layer0 = tray.GetLayer0Anchors();
+                var layer1 = tray.GetLayer1Anchors();
+
+                foreach (var anchor in layer0)
+                {
+                    if (anchor == null) continue;
+                    allSlots.Add(new SlotInfo
+                    {
+                        Anchor = anchor,
+                        WorldPos = anchor.position,   // cache ngay lúc tray đứng yên
+                        LayerIndex = 0,
+                        OwnerTray = tray,
+                    });
+                }
+                foreach (var anchor in layer1)
+                {
+                    if (anchor == null) continue;
+                    allSlots.Add(new SlotInfo
+                    {
+                        Anchor = anchor,
+                        WorldPos = anchor.position,
+                        LayerIndex = 1,
+                        OwnerTray = tray,
+                    });
+                }
+            }
+
+            // Chỉ dùng số slot = số food thực tế (phòng trường hợp có slot thừa)
+            int count = Mathf.Min(allFoodData.Count, allSlots.Count);
+            if (count < 2)
+            {
+                Debug.LogWarning("[Shuffle] Không đủ slot để shuffle.");
+                yield break;
+            }
+
+            // ══════════════════════════════════════════════════════════════════
+            // BƯỚC 4: Unfollow + Despawn tất cả spawned food
+            // ══════════════════════════════════════════════════════════════════
+            foreach (var food in spawnedFoods)
                 food.GetComponent<SlotFollower>()?.Unfollow();
 
-            yield return null;
+            yield return null; // chờ LateUpdate xử lý unfollow
 
-            // ── Bước 5: Despawn TẤT CẢ cùng lúc ─────────────────────────────
-            foreach (var food in allFoods)
+            foreach (var food in spawnedFoods)
             {
-                var capturedFood = food;
-                capturedFood.transform
+                var captured = food;
+                captured.transform
                     .DOScale(Vector3.zero, DespawnDuration)
                     .SetEase(Ease.InBack)
                     .OnComplete(() =>
                     {
-                        if (capturedFood != null)
-                            PoolManager.Instance.ReturnFood(
-                                capturedFood.FoodID, capturedFood.gameObject);
+                        if (captured != null)
+                            PoolManager.Instance.ReturnFood(captured.FoodID, captured.gameObject);
                     });
             }
 
             yield return new WaitForSeconds(DespawnDuration + 0.05f);
 
-            // ── Bước 6: Clear stacks ──────────────────────────────────────────
-            var allTrays = _gridSpawner.GetCellContainer()
-                .GetComponentsInChildren<FoodTray>(includeInactive: false);
+            // ══════════════════════════════════════════════════════════════════
+            // BƯỚC 5: Clear tất cả stacks + pending trong mọi tray
+            // (bao gồm cả pending layer 2 vì ta đã gom vào allFoodData rồi)
+            // ══════════════════════════════════════════════════════════════════
             foreach (var tray in allTrays)
-                tray.ClearStacksOnly();
+                tray.ClearStacksAndPending();
 
-            // ── Bước 7: Fisher-Yates shuffle SLOTS ───────────────────────────
-            var shuffledSlots = new List<Transform>(snapshots.Count);
-            foreach (var s in snapshots) shuffledSlots.Add(s.Slot);
-
-            for (int i = shuffledSlots.Count - 1; i > 0; i--)
+            // ══════════════════════════════════════════════════════════════════
+            // BƯỚC 6: Fisher-Yates shuffle food data
+            // (shuffle DATA, giữ nguyên thứ tự SLOT để layer assignment đúng)
+            // ══════════════════════════════════════════════════════════════════
+            var shuffledData = new List<FoodItemData>(allFoodData);
+            for (int i = shuffledData.Count - 1; i > 0; i--)
             {
                 int j = Random.Range(0, i + 1);
-                (shuffledSlots[i], shuffledSlots[j])
-                    = (shuffledSlots[j], shuffledSlots[i]);
+                (shuffledData[i], shuffledData[j]) = (shuffledData[j], shuffledData[i]);
             }
 
-            // ── Bước 8: Respawn – SNAP ngay vào world position đã cache ──────
-            // SpawnSingleFoodSnap đã snap position ngay trước khi DOTween chạy
-            // → food xuất hiện ĐÚNG VỊ TRÍ, không bị trượt về slot sau
-            // layerIndex MỚI theo slot mới → tự động áp visual đúng (màu, scale, collider)
+            // ══════════════════════════════════════════════════════════════════
+            // BƯỚC 7: Respawn với layer đúng + SNAP NGAY vào world position đã cache
+            //
+            // Cơ chế "snap trước, animate sau":
+            //   1. GetFood từ pool
+            //   2. go.transform.position = cachedWorldPos  ← NGAY LẬP TỨC (không delay)
+            //   3. go.transform.localScale = Vector3.zero
+            //   4. DOScale(...).SetDelay(stagger) → chỉ scale animation mới delay
+            //   5. OnComplete: Follow(anchor) → bám tray từ đây
+            //
+            // Kết quả: dù tray đã bắt đầu xoay lại trong lúc delay stagger,
+            // food vẫn xuất hiện ĐÚNG VỊ TRÍ vì position đã snap trước animation
+            // ══════════════════════════════════════════════════════════════════
             var neutralContainer = _gridSpawner.GetNeutralContainer();
             if (neutralContainer == null)
             {
@@ -120,44 +184,120 @@ namespace FoodMatch.Items
                 yield break;
             }
 
-            for (int i = 0; i < snapshots.Count; i++)
+            for (int i = 0; i < count; i++)
             {
-                var snap = snapshots[i];
-                var newSlot = shuffledSlots[i];
+                var data = shuffledData[i];
+                var slotInfo = allSlots[i];
                 float delay = i * StaggerDelay;
 
-                if (newSlot == null || snap.Data == null) continue;
+                if (data?.prefab == null) continue;
 
-                // Layer mới = layer của SLOT mới (không phải layer cũ của food)
-                int newLayerIndex = GetLayerIndexOfSlot(newSlot, snap.OwnerTray);
-
-                // SpawnSingleFoodSnap:
-                //   1. GetFood từ pool → snap position = anchor.position (world, tức thì)
-                //   2. DOScale từ 0 → targetScale (theo layer mới)
-                //   3. OnComplete: snap lại 1 lần nữa + Follow(anchor mới)
-                // → không có khoảng thời gian food "lơ lửng" rồi trượt về vị trí
-                snap.OwnerTray?.SpawnSingleFoodSnap(
-                    data: snap.Data,
-                    anchor: newSlot,
-                    layerIdx: newLayerIndex,
-                    neutralContainer: neutralContainer,
-                    spawnDelay: delay);
+                SpawnWithSnapThenAnimate(
+                    data, slotInfo, neutralContainer, delay);
             }
 
-            Debug.Log($"[Shuffle] {snapshots.Count} foods respawned với layer đúng.");
+            Debug.Log($"[Shuffle] {count} foods respawned — layer theo slot mới.");
         }
 
-        private int GetLayerIndexOfSlot(Transform slot, FoodTray tray)
+        // ─────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Spawn food theo đúng quy trình:
+        ///   position SNAP ngay → scale animate sau (delay chỉ ảnh hưởng scale)
+        ///   → Follow anchor sau khi scale xong → không bao giờ drift
+        /// </summary>
+        private void SpawnWithSnapThenAnimate(
+            FoodItemData data, SlotInfo slotInfo,
+            Transform neutralContainer, float scaleDelay)
         {
-            if (tray == null) return 0;
-            return tray.GetLayerIndexOfAnchor(slot);
+            Vector3 prefabScale = data.prefab.transform.localScale;
+
+            // ── Lấy food từ pool ──────────────────────────────────────────────
+            // Spawn tại cachedWorldPos — nhưng ta sẽ override position ngay sau
+            GameObject go = PoolManager.Instance.GetFood(data.foodID, slotInfo.WorldPos);
+            if (go == null) return;
+
+            go.transform.SetParent(neutralContainer, worldPositionStays: true);
+
+            // ── SNAP NGAY vào world position đã cache (không dùng DOTween delay) ──
+            // Đây là điểm mấu chốt: position được set TRƯỚC khi bất kỳ delay nào
+            // → dù tray xoay trong khoảng scaleDelay, food đã ở đúng chỗ
+            go.transform.position = slotInfo.WorldPos;
+            go.transform.localScale = Vector3.zero; // ẩn đến khi scale-in
+
+            // ── Initialize FoodItem theo layerIndex MỚI ────────────────────────
+            // layerIndex mới = layer của SLOT mới → visual/collider đúng
+            FoodItem item = go.GetComponent<FoodItem>();
+            if (item == null)
+            {
+                Debug.LogError($"[Shuffle] '{data.foodName}' thiếu FoodItem!");
+                return;
+            }
+
+            item.Initialize(data, slotInfo.LayerIndex);
+            item.OwnerTray = slotInfo.OwnerTray;
+            item.SetAnchorRef(slotInfo.Anchor);
+
+            // ── Đăng ký vào stack của tray ────────────────────────────────────
+            slotInfo.OwnerTray?.RegisterToStack(item, slotInfo.Anchor, slotInfo.LayerIndex);
+
+            // ── Unfollow trong lúc animate (phòng LateUpdate kéo position) ────
+            SlotFollower follower = go.GetComponent<SlotFollower>();
+            if (follower == null) follower = go.AddComponent<SlotFollower>();
+            follower.Unfollow();
+
+            // ── Scale target theo layer mới ───────────────────────────────────
+            // Layer 0 → full size | Layer 1 → 80% + grey (đã set bởi Initialize)
+            Vector3 targetScale = slotInfo.LayerIndex == 0
+                ? prefabScale
+                : prefabScale * 0.8f;
+
+            // ── Scale-in animation (delay stagger KHÔNG ảnh hưởng position) ──
+            go.transform
+                .DOScale(targetScale, 0.3f)
+                .SetDelay(scaleDelay)
+                .SetEase(Ease.OutBack)
+                .SetUpdate(false)
+                .OnComplete(() =>
+                {
+                    if (go == null) return;
+
+                    // Snap lần 2 sau animation → triệt tiêu drift do tray xoay
+                    // trong khoảng scaleDelay
+                    go.transform.position = slotInfo.Anchor.position;
+
+                    // Bắt đầu Follow anchor → bám tray từ đây
+                    follower.Follow(slotInfo.Anchor);
+                });
         }
 
-        private struct SlotSnapshot
+        // ─────────────────────────────────────────────────────────────────────
+
+        private int CountTotalFoods()
         {
-            public Transform Slot;
-            public Vector3 SlotWorldPos;
-            public FoodItemData Data;
+            if (_gridSpawner == null) return 0;
+
+            // cellContainer chưa được tạo (trước khi SpawnGrid chạy) → trả về 0
+            // tránh UnassignedReferenceException khi Editor poll CanExecute() lúc start
+            var cellContainer = _gridSpawner.GetCellContainer();
+            if (cellContainer == null) return 0;
+
+            int count = _gridSpawner.GetAllActiveFoods().Count;
+
+            var allTrays = cellContainer
+                .GetComponentsInChildren<FoodTray>(includeInactive: false);
+            foreach (var tray in allTrays)
+                count += tray.GetAllPendingData().Count;
+
+            return count;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+
+        private struct SlotInfo
+        {
+            public Transform Anchor;
+            public Vector3 WorldPos;   // cached khi tray đứng yên
             public int LayerIndex;
             public FoodTray OwnerTray;
         }
