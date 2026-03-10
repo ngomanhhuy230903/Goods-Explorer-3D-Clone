@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using DG.Tweening;
 using FoodMatch.Core;
@@ -28,6 +29,13 @@ namespace FoodMatch.Tray
         [Tooltip("Số slot pre-warm trong pool (nên >= max capacity của bất kỳ level nào = 7).")]
         [SerializeField] private int poolPreloadCount = 7;
 
+        [Header("─── Animation ────────────────────────")]
+        [Tooltip("Thời gian shift slot cũ khi thêm slot mới.")]
+        [SerializeField] private float shiftDuration = 0.25f;
+
+        [Tooltip("Thời gian scale-in slot mới.")]
+        [SerializeField] private float newSlotScaleDuration = 0.3f;
+
         // ─── Runtime ──────────────────────────────────────────────────────────
         private BackupTray _backupTray;
         private ObjectPool _slotPool;
@@ -43,7 +51,6 @@ namespace FoodMatch.Tray
 
             // Container con giữ hierarchy gọn
             var go = new GameObject("SlotAnchors_Container");
-
             go.transform.SetParent(transform, false);
             go.transform.localPosition = Vector3.zero;
             go.transform.localRotation = Quaternion.identity;
@@ -83,21 +90,68 @@ namespace FoodMatch.Tray
 
         /// <summary>
         /// Thêm 1 slot mới (Booster +1 Khay).
-        /// Các slot cũ DOLocalMove sang trái, slot mới scale từ 0 → 1.
+        /// Block input → shift slot cũ + di chuyển food → scale-in slot mới → unblock input.
         /// </summary>
         public void AddExtraSlot()
         {
+            StartCoroutine(AddExtraSlotRoutine());
+        }
+
+        // ─── Core Routine ─────────────────────────────────────────────────────
+
+        private IEnumerator AddExtraSlotRoutine()
+        {
+            // ── 1. Block input ngay lập tức ──────────────────────────────────
+            InputBlocker.Block("BackupTrayExpand");
+
             int newTotal = _activeSlotAnchors.Count + 1;
+
+            // Snapshot occupants TRƯỚC khi anchor dịch (cần world pos hiện tại)
+            var occupants = _backupTray.GetOccupantsSnapshot();
+
+            // ── 2. Tween slot anchors CŨ + food theo cùng ────────────────────
+            var tweens = new List<Tween>();
 
             for (int i = 0; i < _activeSlotAnchors.Count; i++)
             {
                 Vector3 targetLocalPos = CalculateSlotLocalPos(i, newTotal);
-                _activeSlotAnchors[i].transform
-                    .DOLocalMove(targetLocalPos, 0.25f)
+                Vector3 targetWorldPos = _slotContainer.TransformPoint(targetLocalPos);
+
+                // Tween anchor
+                Tween anchorTween = _activeSlotAnchors[i].transform
+                    .DOLocalMove(targetLocalPos, shiftDuration)
                     .SetEase(Ease.OutCubic);
+                tweens.Add(anchorTween);
+
+                // Tween food nếu slot này đang có food
+                if (occupants.TryGetValue(i, out var food) && food != null)
+                {
+                    // Kill DOTween cũ trên food để tránh conflict
+                    food.transform.DOKill();
+
+                    Tween foodTween = food.transform
+                        .DOMove(targetWorldPos, shiftDuration)
+                        .SetEase(Ease.OutCubic);
+                    tweens.Add(foodTween);
+                }
             }
 
-            // Spawn slot mới ở cuối
+            // ── 3. Chờ tất cả shift xong ─────────────────────────────────────
+            // Dùng yield trên sequence thay vì WaitForSeconds để đảm bảo đúng duration
+            if (tweens.Count > 0)
+                yield return tweens[0].WaitForCompletion();
+            else
+                yield return new WaitForSeconds(shiftDuration);
+
+            // ── 4. Hard-snap food về đúng anchor (tránh drift floating point) ─
+            foreach (var kv in occupants)
+            {
+                if (kv.Value == null) continue;
+                if (kv.Key >= _activeSlotAnchors.Count) continue;
+                kv.Value.transform.position = _activeSlotAnchors[kv.Key].transform.position;
+            }
+
+            // ── 5. Spawn slot mới ở cuối, scale-in ───────────────────────────
             var newAnchor = SpawnOneSlot(_activeSlotAnchors.Count, newTotal, animate: true);
             _activeSlotAnchors.Add(newAnchor);
 
@@ -106,13 +160,18 @@ namespace FoodMatch.Tray
             // Báo BackupTray mở rộng thêm 1
             _backupTray.ExpandCapacity(1);
 
+            // ── 6. Chờ scale-in xong rồi mới unblock ─────────────────────────
+            yield return new WaitForSeconds(newSlotScaleDuration);
+
+            InputBlocker.Unblock("BackupTrayExpand");
+
             Debug.Log($"[BackupTraySpawner] Thêm slot. Tổng: {_activeSlotAnchors.Count}");
         }
 
         // ─── Spawn / Pool Logic ───────────────────────────────────────────────
+
         private GameObject SpawnOneSlot(int index, int totalCount, bool animate)
         {
-
             var anchor = _slotPool.Get(Vector3.zero);
             anchor.transform.SetParent(_slotContainer, false);
             anchor.transform.localScale = Vector3.one;
@@ -124,7 +183,7 @@ namespace FoodMatch.Tray
             {
                 anchor.transform.localScale = Vector3.zero;
                 anchor.transform
-                    .DOScale(Vector3.one, 0.3f)
+                    .DOScale(Vector3.one, newSlotScaleDuration)
                     .SetEase(Ease.OutBack);
             }
 
@@ -146,7 +205,7 @@ namespace FoodMatch.Tray
         private Vector3 CalculateSlotLocalPos(int index, int totalCount)
         {
             float totalWidth = (totalCount - 1) * slotSpacingX;
-            float startX = -totalWidth / 2f; // Căn giữa quanh tâm container
+            float startX = -totalWidth / 2f;
 
             return new Vector3(
                 startX + index * slotSpacingX,
@@ -156,6 +215,7 @@ namespace FoodMatch.Tray
         }
 
         // ─── Inject to BackupTray ─────────────────────────────────────────────
+
         private void InjectAnchorsToBackupTray()
         {
             var transforms = new List<Transform>();

@@ -209,6 +209,15 @@ namespace FoodMatch.Tray
             return result;
         }
 
+        /// <summary>
+        /// Snapshot của occupants hiện tại: slotIndex → FoodItem.
+        /// BackupTraySpawner dùng để reposition food khi anchor dịch chuyển.
+        /// </summary>
+        public Dictionary<int, FoodItem> GetOccupantsSnapshot()
+        {
+            return new Dictionary<int, FoodItem>(_occupants);
+        }
+
         // ─── Expansion ────────────────────────────────────────────────────────
 
         public void ExpandCapacity(int addCount)
