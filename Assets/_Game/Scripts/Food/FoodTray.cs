@@ -235,6 +235,17 @@ namespace FoodMatch.Tray
         }
 
         /// <summary>
+        /// Thêm 1 FoodItemData vào cuối queue pending layer 2.
+        /// ShuffleBooster gọi để redistribute overflow food (layer 3, 4...)
+        /// sau khi shuffle — đảm bảo tổng food không thay đổi.
+        /// </summary>
+        public void AddPendingData(FoodItemData data)
+        {
+            if (data != null)
+                _pendingLayer2.Add(data);
+        }
+
+        /// <summary>
         /// Spawn 1 food vào đúng anchor + layer.
         /// ShuffleBooster dùng sau khi shuffle slot.
         /// </summary>
