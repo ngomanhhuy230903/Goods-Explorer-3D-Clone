@@ -21,7 +21,6 @@ namespace FoodMatch.Core
         void Cancel();
     }
 
-    // ─── Concrete Command: bay lên OrderTray ──────────────────────────────────
 
     public sealed class OrderDeliveryCommand : IDeliveryCommand
     {

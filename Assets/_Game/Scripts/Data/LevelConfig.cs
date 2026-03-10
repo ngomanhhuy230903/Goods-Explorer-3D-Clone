@@ -38,7 +38,7 @@ namespace FoodMatch.Data
         public int trayColumns = 3;
 
         [Tooltip("Số hàng của khay đồ ăn.")]
-        [Range(1, 4)]
+        [Range(1, 5)]
         public int trayRows = 3;
 
         [Header("─── Order Setup ──────────────────")]

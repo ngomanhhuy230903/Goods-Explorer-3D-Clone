@@ -230,9 +230,6 @@ namespace FoodMatch.Order
                          .SetEase(Ease.OutCubic)
                          .SetUpdate(true);
         }
-
-        // ── RESERVATION-AWARE SLOT MATCHING ──────────────────────────────────
-
         /// <summary>
         /// Thử match food VÀ reserve slot ngay lập tức.
         /// Nếu slot tiếp theo đã bị reserve, tìm slot kế tiếp còn trống.
@@ -287,7 +284,8 @@ namespace FoodMatch.Order
             int next = OrderData?.DeliveredCount ?? 0;
             return next < slots.Count ? slots[next].FoodTargetScale : Vector3.one;
         }
-
+        public int FoodID => OrderData?.FoodID ?? -1;
+        public int RemainingCount => OrderData?.RemainingCount ?? 0;
         /// <summary>
         /// Confirm delivery tại slotIndex. Gọi SAU khi animation kết thúc.
         /// Slot reservation sẽ được release tự động bởi command.

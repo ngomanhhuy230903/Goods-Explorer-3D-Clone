@@ -1356,6 +1356,99 @@ RectTransform:
     type: 3}
   m_PrefabInstance: {fileID: 9109223354760216563}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &846194294
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 846194295}
+  - component: {fileID: 846194298}
+  - component: {fileID: 846194297}
+  - component: {fileID: 846194296}
+  m_Layer: 5
+  m_Name: PanelRotation
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &846194295
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 846194294}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1183881288}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &846194296
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 846194294}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 24b93b9294bdf3842bb2a025322db540, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  spawner: {fileID: 186209384}
+  degreesPerPixel: 0.4
+  swipeThreshold: 5
+  inertiaDecay: 8
+  maxInertiaSpeed: 360
+--- !u!114 &846194297
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 846194294}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_Material: {fileID: 0}
+  m_Color: {r: 1, g: 1, b: 1, a: 0}
+  m_RaycastTarget: 1
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Sprite: {fileID: 10907, guid: 0000000000000000f000000000000000, type: 0}
+  m_Type: 1
+  m_PreserveAspect: 0
+  m_FillCenter: 1
+  m_FillMethod: 4
+  m_FillAmount: 1
+  m_FillClockwise: 1
+  m_FillOrigin: 0
+  m_UseSpriteMesh: 0
+  m_PixelsPerUnitMultiplier: 1
+--- !u!222 &846194298
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 846194294}
+  m_CullTransparentMesh: 1
 --- !u!1001 &900159453
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1583,7 +1676,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: d006644d9f959fc4ea0cec786ff0cc40, type: 2}
   - {fileID: 11400000, guid: 204ce4b5e8cbd7f44841b837aa70d70e, type: 2}
   - {fileID: 11400000, guid: bb4cd877240b04443b2f6c7a25bfd65a, type: 2}
-  foodPreloadPerType: 10
+  foodPreloadPerType: 20
   checkmarkPrefab: {fileID: 336360798471167382, guid: 1c8636aa622f6c9418a38e1b693095f0,
     type: 3}
   checkmarkPreloadCount: 10
@@ -2068,7 +2161,8 @@ RectTransform:
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 846194295}
   m_Father: {fileID: 22275868}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0.5}
@@ -2271,7 +2365,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: -60.893982, y: -97.73901}
+  m_AnchoredPosition: {x: -60.894043, y: -97.73895}
   m_SizeDelta: {x: 430.265, y: 485.606}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1382145964
@@ -3395,6 +3489,7 @@ MonoBehaviour:
   backupJumpDuration: 0.4
   orderSlotScaleMultiplier: 0.85
   backupSlotScaleMultiplier: 1.7
+  usePremiumFlyEffect: 0
   autoMatchStaggerDelay: 0.25
   sparkleVFXPrefab: {fileID: 6153586278890169638, guid: 5b47bb56c37ee4d45bfb233c3f8336f9,
     type: 3}
@@ -3594,7 +3689,7 @@ PrefabInstance:
         type: 3}
       propertyPath: m_OnClick.m_PersistentCalls.m_Calls.Array.data[0].m_Target
       value: 
-      objectReference: {fileID: 531939543}
+      objectReference: {fileID: 156558272}
     - target: {fileID: 994881578884680927, guid: 7023d50b6f6faa447b16afed6f071820,
         type: 3}
       propertyPath: m_OnClick.m_PersistentCalls.m_Calls.Array.data[0].m_CallState
@@ -3603,17 +3698,22 @@ PrefabInstance:
     - target: {fileID: 994881578884680927, guid: 7023d50b6f6faa447b16afed6f071820,
         type: 3}
       propertyPath: m_OnClick.m_PersistentCalls.m_Calls.Array.data[0].m_MethodName
-      value: OnClickGoHome
+      value: OnClickPlayButton
       objectReference: {fileID: 0}
     - target: {fileID: 994881578884680927, guid: 7023d50b6f6faa447b16afed6f071820,
         type: 3}
       propertyPath: m_OnClick.m_PersistentCalls.m_Calls.Array.data[0].m_TargetAssemblyTypeName
-      value: FoodMatch.UI.GameResultUI, Assembly-CSharp
+      value: UIManager, Assembly-CSharp
       objectReference: {fileID: 0}
     - target: {fileID: 994881578884680927, guid: 7023d50b6f6faa447b16afed6f071820,
         type: 3}
       propertyPath: m_OnClick.m_PersistentCalls.m_Calls.Array.data[0].m_Arguments.m_ObjectArgumentAssemblyTypeName
       value: UnityEngine.Object, UnityEngine
+      objectReference: {fileID: 0}
+    - target: {fileID: 2620836623855320697, guid: 7023d50b6f6faa447b16afed6f071820,
+        type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: -227.99997
       objectReference: {fileID: 0}
     - target: {fileID: 2865128117228277285, guid: 7023d50b6f6faa447b16afed6f071820,
         type: 3}

@@ -24,7 +24,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 9cddf89ff4e19a14e882b9635dc24ccd, type: 2}
   - {fileID: 11400000, guid: f3d8108444721da41930fe1572e141e4, type: 2}
   totalFoodCount: 360
-  layerCount: 5
+  layerCount: 4
   trayColumns: 6
   trayRows: 4
   maxActiveOrders: 2

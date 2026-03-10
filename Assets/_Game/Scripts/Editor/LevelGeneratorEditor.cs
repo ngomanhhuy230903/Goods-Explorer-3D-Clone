@@ -25,7 +25,7 @@ namespace FoodMatch.Editor
         // ─── Giới hạn tham số thiết kế ────────────────────────────────────────
         // Grid size: từ nhỏ nhất đến lớn nhất
         private const int MIN_COLS = 4; private const int MAX_COLS = 6;
-        private const int MIN_ROWS = 2; private const int MAX_ROWS = 4;
+        private const int MIN_ROWS = 2; private const int MAX_ROWS = 5;
         private const int MIN_LAYERS = 2; private const int MAX_LAYERS = 5;
         private const int MIN_FOOD_TYPES = 3;
         // MAX_FOOD_TYPES lấy từ _foodDb.allFoods.Count (tối đa 9)

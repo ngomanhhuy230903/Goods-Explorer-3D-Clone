@@ -27,7 +27,7 @@ MonoBehaviour:
   totalFoodCount: 351
   layerCount: 5
   trayColumns: 6
-  trayRows: 4
+  trayRows: 5
   maxActiveOrders: 2
   backupTrayCapacity: 5
   timeLimitSeconds: 0

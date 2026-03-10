@@ -14,6 +14,7 @@ namespace FoodMatch.Core
         public static event Action<FoodItemData> OnFoodSelected;
         public static event Action<FoodItemData, int> OnFoodMatchedCustomer;
         public static event Action<FoodItemData> OnFoodSentToBackup;
+        public static event Action<int> OnBufferFoodReady;
 
         // ─── Order Events ─────────────────────────────────────────────────────
         public static event Action<int> OnOrderCompleted;
@@ -62,7 +63,7 @@ namespace FoodMatch.Core
         public static void RaiseGamePaused() => OnGamePaused?.Invoke();
         public static void RaiseGameResumed() => OnGameResumed?.Invoke();
         public static void RaiseBoosterActivated(string name) => OnBoosterActivated?.Invoke(name);
-
+        public static void RaiseBufferFoodReady(int foodID) => OnBufferFoodReady?.Invoke(foodID);
         public static void ClearAllEvents()
         {
             OnFoodSelected = null;
@@ -81,7 +82,7 @@ namespace FoodMatch.Core
             OnGamePaused = null;
             OnGameResumed = null;
             OnBoosterActivated = null;
-
+            OnBufferFoodReady = null;
             Debug.Log("[EventBus] Tất cả events đã được dọn sạch.");
         }
     }

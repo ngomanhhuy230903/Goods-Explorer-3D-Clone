@@ -23,6 +23,6 @@ MonoBehaviour:
   layerCount: 2
   trayColumns: 4
   trayRows: 2
-  maxActiveOrders: 1
+  maxActiveOrders: 2
   backupTrayCapacity: 5
   timeLimitSeconds: 0

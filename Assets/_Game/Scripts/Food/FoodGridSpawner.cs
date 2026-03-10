@@ -343,7 +343,35 @@ namespace FoodMatch.Tray
             if (col < 0 || col >= r.Count) return null;
             return r[col];
         }
+        public List<FoodMatch.Food.FoodItem> GetAllActiveFoods()
+        {
+            var result = new List<FoodMatch.Food.FoodItem>();
+            if (_neutralContainer == null) return result;
 
+            var foods = _neutralContainer
+                .GetComponentsInChildren<FoodMatch.Food.FoodItem>(includeInactive: false);
+            result.AddRange(foods);
+            return result;
+        }
+        /// <summary>
+        /// Quét tất cả FoodTray con, gom pending data layer 2+ theo foodID.
+        /// MagnetBooster dùng để lấy food chưa spawn.
+        /// </summary>
+        public List<FoodMatch.Data.FoodItemData> GetPendingFoodsOfType(int foodID)
+        {
+            var result = new List<FoodMatch.Data.FoodItemData>();
+            if (_neutralContainer == null) return result;
+
+            var trays = GetCellContainer()
+                .GetComponentsInChildren<FoodTray>(includeInactive: false);
+
+            foreach (var tray in trays)
+                result.AddRange(tray.GetPendingFoodsOfType(foodID));
+
+            return result;
+        }
+        public Vector3 GetCenterWorldPosition()
+            => cellContainer != null ? cellContainer.position : transform.position;
         // ─── Validate ─────────────────────────────────────────────────────────
 
         private bool Validate(LevelConfig config)

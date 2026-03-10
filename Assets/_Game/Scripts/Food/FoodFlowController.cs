@@ -40,6 +40,8 @@ namespace FoodMatch.Food
 
         [Header("─── VFX ─────────────────────────────")]
         [SerializeField] private GameObject sparkleVFXPrefab;
+        [Header("─── Buffer ───────────────────────────")]
+        [SerializeField] private FoodMatch.Tray.FoodBuffer _foodBuffer;
 
         // ─── Runtime Dependencies ─────────────────────────────────────────────
         private OrderQueue _orderQueue;
@@ -64,8 +66,16 @@ namespace FoodMatch.Food
             _backupFlyStrategy = FlyStrategyFactory.CreateBackupStrategy();
         }
 
-        private void OnEnable() => EventBus.OnNewOrderActive += HandleNewOrderActive;
-        private void OnDisable() => EventBus.OnNewOrderActive -= HandleNewOrderActive;
+        private void OnEnable()
+        {
+            EventBus.OnNewOrderActive += HandleNewOrderActive;
+            EventBus.OnBufferFoodReady += HandleBufferFoodReady;
+        }
+        private void OnDisable()
+        {
+            EventBus.OnNewOrderActive -= HandleNewOrderActive;
+            EventBus.OnBufferFoodReady -= HandleBufferFoodReady;
+        }
         private void OnDestroy() { if (Instance == this) Instance = null; }
 
         #endregion
@@ -383,5 +393,51 @@ namespace FoodMatch.Food
         }
 
         #endregion
+        #region Buffer → OrderTray Auto-Send
+
+        private void HandleBufferFoodReady(int foodID)
+        {
+            if (!_isReady || _foodBuffer == null || _orderQueue == null) return;
+            if (!_foodBuffer.HasFoodOfType(foodID)) return;
+
+            StartCoroutine(SendBufferFoodCoroutine(foodID));
+        }
+
+        /// <summary>
+        /// Loop lấy TẤT CẢ food cùng foodID từ buffer lên order.
+        /// Dùng while loop thay vì raise event nhiều lần.
+        /// </summary>
+        private IEnumerator SendBufferFoodCoroutine(int foodID)
+        {
+            while (_foodBuffer != null && _foodBuffer.HasFoodOfType(foodID))
+            {
+                // Kiểm tra còn order cần foodID này không
+                int instanceId = -(foodID * 10000 + (System.Environment.TickCount & 0x7FFF));
+                var matchResult = _orderQueue.TryMatchFoodWithReservation(foodID, instanceId);
+
+                if (!matchResult.IsMatch)
+                {
+                    Log($"[Buffer] Không còn slot cho foodID={foodID}");
+                    yield break;
+                }
+
+                var food = _foodBuffer.TakeFood(foodID);
+                if (food == null)
+                {
+                    matchResult.Tray?.ReleaseSlotReservation(matchResult.SlotIndex);
+                    yield break;
+                }
+
+                bool done = false;
+                var cmd = new OrderDeliveryCommand(food, matchResult.Tray, matchResult.SlotIndex);
+                ExecuteOrderCommand(cmd, () => done = true);
+
+                yield return new WaitUntil(() => done);
+                yield return new WaitForSeconds(autoMatchStaggerDelay);
+            }
+        }
+
+        #endregion
+        private void Log(string msg) => Debug.Log(msg);
     }
 }
