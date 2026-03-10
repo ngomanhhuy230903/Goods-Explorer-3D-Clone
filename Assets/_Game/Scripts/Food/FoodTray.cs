@@ -19,7 +19,7 @@ namespace FoodMatch.Tray
         /// <summary>
         /// _stacks[0] = layer 0 (spawned, interactive)
         /// _stacks[1] = layer 1 (spawned, greyed-out)
-        /// Layer 2 chỉ lưu DATA, chưa spawn GameObject cho đến khi cần promote.
+        /// Layer 2+ lưu DATA trong _pendingLayers[], chưa spawn GameObject cho đến khi promote.
         /// </summary>
         private readonly List<FoodItem>[] _stacks =
         {
@@ -28,14 +28,24 @@ namespace FoodMatch.Tray
         };
 
         /// <summary>
-        /// Data-only cho layer 2. Chưa spawn GameObject.
-        /// Sẽ được spawn khi layer 1 promote lên layer 0.
+        /// FIX: Thay _pendingLayer2 đơn lẻ bằng queue của các pending layer.
+        /// _pendingLayers[0] = data của layer 2 (sẽ spawn vào layer 1 khi promote)
+        /// _pendingLayers[1] = data của layer 3 (sẽ trở thành layer 2 sau khi promote)
+        /// _pendingLayers[2] = data của layer 4 (sẽ trở thành layer 3 sau khi promote)
+        /// ... tối đa MAX_LAYER_COUNT - 2 phần tử pending (vì layer 0 và 1 đã spawn)
         /// </summary>
-        private readonly List<FoodItemData> _pendingLayer2 = new();
+        private const int MAX_LAYER_COUNT = 5;
+        private readonly List<List<FoodItemData>> _pendingLayers = new();
+
+        // Giữ _pendingLayer2 làm alias trỏ vào _pendingLayers[0] để tương thích
+        // với các API cũ (MagnetBooster, ShuffleBooster).
+        private List<FoodItemData> _pendingLayer2 => _pendingLayers.Count > 0
+            ? _pendingLayers[0]
+            : null;
 
         private readonly Dictionary<FoodItem, Transform> _itemAnchorMap = new();
 
-        // Cache neutralContainer để dùng khi spawn layer 2 lazily
+        // Cache neutralContainer để dùng khi spawn lazy
         private Transform _neutralContainer;
 
         public int TrayID { get; private set; }
@@ -43,31 +53,58 @@ namespace FoodMatch.Tray
         public bool IsEmpty => TopItem == null;
 
         /// <summary>
-        /// Capacity vật lý = layer 0 + layer 1 anchors thôi.
-        /// Layer 2 không cần anchor riêng — dùng lại anchor của layer 1 khi promoted.
+        /// Capacity vật lý = layer 0 + layer 1 anchors.
+        /// Layer 2+ không cần anchor riêng — dùng lại anchor của layer 1 khi promoted.
         /// </summary>
         public int TotalAnchorCapacity => layer0Anchors.Count + layer1Anchors.Count;
 
         /// <summary>
         /// Tổng số food thực sự tray này đang "giữ" (cả spawned lẫn pending).
-        /// Dùng để FoodTraySpawner tính đúng capacity khi distribute.
         /// </summary>
-        public int TotalFoodCount =>
-            _stacks[0].Count + _stacks[1].Count + _pendingLayer2.Count;
+        public int TotalFoodCount
+        {
+            get
+            {
+                int count = _stacks[0].Count + _stacks[1].Count;
+                foreach (var pending in _pendingLayers)
+                    count += pending.Count;
+                return count;
+            }
+        }
 
         /// <summary>
-        /// Max food tray này có thể chứa = layer0 + layer1 + layer2
-        /// (layer2 dùng lại số slot của layer1)
+        /// FIX: MaxFoodCapacity tính đúng dựa trên số pending layer thực tế.
+        /// = layer0 + layer1 + (layer1 * số pending layer)
+        /// Ví dụ với 5 layer: layer0 + layer1 + layer1*3 = layer0 + layer1*4
         /// </summary>
         public int MaxFoodCapacity =>
-            layer0Anchors.Count + layer1Anchors.Count + layer1Anchors.Count;
+            layer0Anchors.Count + layer1Anchors.Count * (1 + _pendingLayers.Count);
+
+        /// <summary>
+        /// Capacity tối đa lý thuyết khi dùng tất cả MAX_LAYER_COUNT layer.
+        /// FoodTraySpawner dùng để pre-check trước khi distribute.
+        /// </summary>
+        public int MaxTheoreticalCapacity =>
+            layer0Anchors.Count + layer1Anchors.Count * (MAX_LAYER_COUNT - 1);
+
+        // ─── Awake ────────────────────────────────────────────────────────────
+
+        private void Awake()
+        {
+            // Khởi tạo pending layer queue — MAX_LAYER_COUNT - 2 pending list
+            // (trừ layer 0 và 1 vì chúng dùng _stacks)
+            _pendingLayers.Clear();
+            for (int i = 0; i < MAX_LAYER_COUNT - 2; i++)
+                _pendingLayers.Add(new List<FoodItemData>());
+        }
 
         // ─── Public API ───────────────────────────────────────────────────────
 
         /// <summary>
-        /// foods[0..layer0Count-1]          → spawn ngay vào layer 0
-        /// foods[layer0Count..layer1End-1]  → spawn ngay vào layer 1 (mờ/nhỏ)
-        /// foods[layer1End..]               → lưu vào _pendingLayer2, CHƯA spawn
+        /// foods[0..l0Cap-1]            → spawn ngay vào layer 0
+        /// foods[l0Cap..l0Cap+l1Cap-1]  → spawn ngay vào layer 1 (mờ/nhỏ)
+        /// foods[l0Cap+l1Cap..]         → lưu vào _pendingLayers theo thứ tự layer,
+        ///                                CHƯA spawn cho đến khi promote.
         /// </summary>
         public void SpawnFoods(List<FoodItemData> foods, int trayID,
                                Transform neutralContainer, float globalDelay = 0f)
@@ -86,27 +123,42 @@ namespace FoodMatch.Tray
 
                 if (i < l0Cap)
                 {
+                    // Layer 0: spawn ngay, interactive
                     SpawnFoodItem(data, layer0Anchors[i], layerIdx: 0,
                                   neutralContainer, spawnDelay: globalDelay + i * 0.04f);
                 }
                 else if (i < l0Cap + l1Cap)
                 {
+                    // Layer 1: spawn ngay, greyed-out
                     int anchorIdx = i - l0Cap;
                     SpawnFoodItem(data, layer1Anchors[anchorIdx], layerIdx: 1,
                                   neutralContainer, spawnDelay: 0f);
                 }
                 else
                 {
-                    _pendingLayer2.Add(data);
+                    // FIX: Layer 2+ — phân phối vào đúng pending slot theo thứ tự
+                    // foodOffset = vị trí trong vùng pending (0-based)
+                    int foodOffset = i - (l0Cap + l1Cap);
+                    // pendingLayerIdx = index trong _pendingLayers (0 = layer2, 1 = layer3, ...)
+                    // Mỗi pending layer chứa tối đa l1Cap item (dùng chung anchor layer1)
+                    int pendingLayerIdx = foodOffset / l1Cap;
+
+                    if (pendingLayerIdx < _pendingLayers.Count)
+                    {
+                        _pendingLayers[pendingLayerIdx].Add(data);
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[FoodTray] Tray {TrayID}: food thứ {i} vượt quá " +
+                                         $"MaxTheoreticalCapacity ({MaxTheoreticalCapacity})! Bỏ qua.");
+                    }
                 }
             }
         }
 
         /// <summary>
         /// Thử lấy item ra khỏi layer 0.
-        /// Sau khi remove, nếu layer 0 trống HOÀN TOÀN:
-        ///   → promote toàn bộ layer 1 lên layer 0
-        ///   → spawn layer 2 pending vào vị trí layer 1
+        /// Sau khi remove, nếu layer 0 trống HOÀN TOÀN → promote chain.
         /// </summary>
         public FoodItem TryPopItem(FoodItem item)
         {
@@ -127,9 +179,8 @@ namespace FoodMatch.Tray
         }
 
         /// <summary>
-        /// MagnetBooster dùng: remove food khỏi bất kỳ layer nào (0, 1).
+        /// MagnetBooster: remove food khỏi bất kỳ layer nào (0, 1).
         /// KHÔNG trigger promote — Magnet tự lo animation và flow.
-        /// Trả về true nếu tìm và remove thành công.
         /// </summary>
         public bool ForceRemoveFromAnyLayer(FoodItem item)
         {
@@ -162,14 +213,14 @@ namespace FoodMatch.Tray
                 }
                 _stacks[l].Clear();
             }
-            _pendingLayer2.Clear();
+
+            // FIX: Clear toàn bộ pending layers
+            foreach (var pending in _pendingLayers)
+                pending.Clear();
+
             _itemAnchorMap.Clear();
         }
 
-        /// <summary>
-        /// Chỉ clear internal stacks/maps mà KHÔNG return food về pool.
-        /// Dùng bởi ShuffleBooster sau khi đã tự return pool ở bước despawn.
-        /// </summary>
         public void ClearStacksOnly()
         {
             for (int l = 0; l < 2; l++)
@@ -182,14 +233,14 @@ namespace FoodMatch.Tray
                 }
                 _stacks[l].Clear();
             }
-            _pendingLayer2.Clear();
+
+            // FIX: Clear toàn bộ pending layers
+            foreach (var pending in _pendingLayers)
+                pending.Clear();
+
             _itemAnchorMap.Clear();
         }
 
-        /// <summary>
-        /// Clear stacks (không return pool) + pending layer 2.
-        /// ShuffleBooster gọi sau khi đã gom toàn bộ data vào pool shuffle.
-        /// </summary>
         public void ClearStacksAndPending()
         {
             for (int l = 0; l < 2; l++)
@@ -202,53 +253,82 @@ namespace FoodMatch.Tray
                 }
                 _stacks[l].Clear();
             }
-            _pendingLayer2.Clear();
+
+            // FIX: Clear toàn bộ pending layers
+            foreach (var pending in _pendingLayers)
+                pending.Clear();
+
             _itemAnchorMap.Clear();
         }
 
         /// <summary>
-        /// Trả về pending data layer 2+ theo foodID.
-        /// MagnetBooster dùng để lấy food chưa spawn vào scene.
+        /// Trả về pending data layer 2 theo foodID.
+        /// Tương thích ngược với MagnetBooster (chỉ cần layer đầu tiên pending).
         /// </summary>
         public List<FoodItemData> GetPendingFoodsOfType(int foodID)
         {
             var result = new List<FoodItemData>();
-            foreach (var data in _pendingLayer2)
-                if (data != null && data.foodID == foodID)
-                    result.Add(data);
+            // FIX: Tìm trong toàn bộ pending layers, không chỉ layer2
+            foreach (var pending in _pendingLayers)
+                foreach (var data in pending)
+                    if (data != null && data.foodID == foodID)
+                        result.Add(data);
             return result;
         }
 
         /// <summary>
-        /// Trả về TOÀN BỘ pending data layer 2 (không lọc theo foodID).
+        /// Trả về TOÀN BỘ pending data (layer 2+).
         /// ShuffleBooster gom vào pool chung trước khi shuffle.
         /// </summary>
-        public IReadOnlyList<FoodItemData> GetAllPendingData() => _pendingLayer2;
+        public IReadOnlyList<FoodItemData> GetAllPendingData()
+        {
+            // FIX: Gom tất cả pending layers vào 1 list
+            var all = new List<FoodItemData>();
+            foreach (var pending in _pendingLayers)
+                all.AddRange(pending);
+            return all;
+        }
 
         /// <summary>
-        /// Remove 1 pending food data khỏi layer 2 queue.
-        /// Gọi sau khi MagnetBooster đã spawn và gửi food đó lên order.
+        /// Remove 1 pending food data khỏi bất kỳ pending layer nào.
         /// </summary>
         public bool RemovePendingFood(FoodItemData data)
         {
-            return _pendingLayer2.Remove(data);
+            // FIX: Tìm và remove trong toàn bộ pending layers
+            foreach (var pending in _pendingLayers)
+                if (pending.Remove(data)) return true;
+            return false;
         }
 
         /// <summary>
-        /// Thêm 1 FoodItemData vào cuối queue pending layer 2.
-        /// ShuffleBooster gọi để redistribute overflow food (layer 3, 4...)
-        /// sau khi shuffle — đảm bảo tổng food không thay đổi.
+        /// Thêm 1 FoodItemData vào cuối pending layer đầu tiên còn chỗ.
+        /// ShuffleBooster gọi để redistribute overflow food.
         /// </summary>
         public void AddPendingData(FoodItemData data)
         {
-            if (data != null)
-                _pendingLayer2.Add(data);
+            if (data == null) return;
+
+            int l1Cap = layer1Anchors.Count;
+
+            // FIX: Tìm pending layer còn chỗ để thêm vào
+            foreach (var pending in _pendingLayers)
+            {
+                if (pending.Count < l1Cap)
+                {
+                    pending.Add(data);
+                    return;
+                }
+            }
+
+            // Fallback: thêm vào layer pending cuối nếu tất cả đều đầy
+            if (_pendingLayers.Count > 0)
+            {
+                _pendingLayers[_pendingLayers.Count - 1].Add(data);
+                Debug.LogWarning($"[FoodTray] Tray {TrayID}: AddPendingData overflow! " +
+                                 $"Đã thêm vào pending layer cuối.");
+            }
         }
 
-        /// <summary>
-        /// Spawn 1 food vào đúng anchor + layer.
-        /// ShuffleBooster dùng sau khi shuffle slot.
-        /// </summary>
         public void SpawnSingleFood(FoodItemData data, Transform anchor,
                                     int layerIdx, Transform neutralContainer,
                                     float spawnDelay = 0f)
@@ -259,11 +339,6 @@ namespace FoodMatch.Tray
             SpawnFoodItem(data, anchor, layerIdx, neutralContainer, spawnDelay);
         }
 
-        /// <summary>
-        /// Spawn food + snap NGAY vào world position của anchor.
-        /// Dùng cho Shuffle: đảm bảo food xuất hiện đúng chỗ dù tray đang xoay.
-        /// LayerIndex theo anchor mới → visual đúng (màu, scale, collider).
-        /// </summary>
         public void SpawnSingleFoodSnap(FoodItemData data, Transform anchor,
                                         int layerIdx, Transform neutralContainer,
                                         float spawnDelay = 0f)
@@ -272,16 +347,12 @@ namespace FoodMatch.Tray
                 _neutralContainer = neutralContainer;
 
             Vector3 prefabScale = data.prefab.transform.localScale;
-            Vector3 spawnWorldPos = anchor.position;   // cache ngay lúc tray đứng yên
+            Vector3 spawnWorldPos = anchor.position;
 
             GameObject go = PoolManager.Instance.GetFood(data.foodID, spawnWorldPos);
             if (go == null) return;
 
             go.transform.SetParent(neutralContainer, worldPositionStays: true);
-
-            // ── SNAP position NGAY, không delay ──────────────────────────────
-            // Đây là điểm mấu chốt: position set trước bất kỳ delay nào
-            // → dù tray xoay trong khoảng spawnDelay, food đã ở đúng chỗ
             go.transform.position = spawnWorldPos;
             go.transform.localScale = Vector3.zero;
 
@@ -292,7 +363,6 @@ namespace FoodMatch.Tray
                 return;
             }
 
-            // Initialize với layerIdx MỚI → visual/collider đúng theo layer
             item.Initialize(data, layerIdx);
             item.OwnerTray = this;
             item.SetAnchorRef(anchor);
@@ -303,11 +373,10 @@ namespace FoodMatch.Tray
 
             SlotFollower follower = go.GetComponent<SlotFollower>();
             if (follower == null) follower = go.AddComponent<SlotFollower>();
-            follower.Unfollow(); // không follow trong lúc animate
+            follower.Unfollow();
 
             Vector3 targetScale = layerIdx == 0 ? prefabScale : prefabScale * 0.8f;
 
-            // Chỉ scale mới delay — position đã snap sẵn
             go.transform
                 .DOScale(targetScale, 0.3f)
                 .SetDelay(spawnDelay)
@@ -316,17 +385,11 @@ namespace FoodMatch.Tray
                 .OnComplete(() =>
                 {
                     if (go == null) return;
-
-                    // Snap lần 2 sau animation → triệt tiêu drift tray xoay trong delay
                     go.transform.position = anchor.position;
                     follower.Follow(anchor);
                 });
         }
 
-        /// <summary>
-        /// Đăng ký FoodItem vào stack và anchor map của tray.
-        /// ShuffleBooster gọi sau khi tự spawn food vào đúng slot mới.
-        /// </summary>
         public void RegisterToStack(FoodItem item, Transform anchor, int layerIdx)
         {
             int stackIdx = Mathf.Clamp(layerIdx, 0, 1);
@@ -335,27 +398,14 @@ namespace FoodMatch.Tray
             _itemAnchorMap[item] = anchor;
         }
 
-        /// <summary>
-        /// Trả về danh sách anchor của layer 0.
-        /// ShuffleBooster dùng để thu thập tất cả available slots.
-        /// </summary>
         public IReadOnlyList<Transform> GetLayer0Anchors() => layer0Anchors;
-
-        /// <summary>
-        /// Trả về danh sách anchor của layer 1.
-        /// ShuffleBooster dùng để thu thập tất cả available slots.
-        /// </summary>
         public IReadOnlyList<Transform> GetLayer1Anchors() => layer1Anchors;
 
-        /// <summary>
-        /// Trả về 0 nếu anchor thuộc layer0Anchors, 1 nếu thuộc layer1Anchors.
-        /// ShuffleBooster dùng để xác định visual của food sau khi đổi slot.
-        /// </summary>
         public int GetLayerIndexOfAnchor(Transform anchor)
         {
             if (layer0Anchors.Contains(anchor)) return 0;
             if (layer1Anchors.Contains(anchor)) return 1;
-            return 0; // fallback
+            return 0;
         }
 
         // ─── Promote Logic ────────────────────────────────────────────────────
@@ -363,13 +413,21 @@ namespace FoodMatch.Tray
         private void TryPromoteNextLayer()
         {
             if (_stacks[0].Count != 0) return;
-            if (_stacks[1].Count == 0 && _pendingLayer2.Count == 0) return;
+
+            bool hasPending = false;
+            foreach (var p in _pendingLayers)
+                if (p.Count > 0) { hasPending = true; break; }
+
+            if (_stacks[1].Count == 0 && !hasPending) return;
 
             if (_stacks[1].Count > 0)
                 PromoteLayer1ToLayer0();
 
-            if (_pendingLayer2.Count > 0)
-                SpawnPendingLayer2();
+            // FIX: Promote chain — layer 2 → layer 1, layer 3 → layer 2, ...
+            // Chỉ spawn layer pending đầu tiên vào layer 1 vật lý,
+            // rồi shift toàn bộ queue pending lên 1 bậc.
+            if (_pendingLayers.Count > 0 && _pendingLayers[0].Count > 0)
+                SpawnAndShiftPendingLayers();
         }
 
         private void PromoteLayer1ToLayer0()
@@ -400,8 +458,8 @@ namespace FoodMatch.Tray
                 FoodItem capturedItem = promoted;
                 Transform capturedAnchor = targetAnchor;
                 Vector3 prefabScale = promoted.Data?.prefab != null
-                                                ? promoted.Data.prefab.transform.localScale
-                                                : Vector3.one;
+                                      ? promoted.Data.prefab.transform.localScale
+                                      : Vector3.one;
 
                 promoted.transform
                     .DOMove(targetAnchor.position, 0.3f)
@@ -425,17 +483,35 @@ namespace FoodMatch.Tray
             }
         }
 
-        private void SpawnPendingLayer2()
+        /// <summary>
+        /// FIX: Spawn pending layer đầu tiên vào slot layer 1 vật lý,
+        /// sau đó shift toàn bộ queue pending lên 1 bậc.
+        /// Layer 2 → vật lý layer 1
+        /// Layer 3 → pending[0] (tức là layer 2 mới)
+        /// Layer 4 → pending[1] (tức là layer 3 mới)
+        /// </summary>
+        private void SpawnAndShiftPendingLayers()
         {
             if (_neutralContainer == null)
             {
-                Debug.LogError("[FoodTray] _neutralContainer null — không thể spawn layer 2!");
+                Debug.LogError("[FoodTray] _neutralContainer null — không thể spawn pending layer!");
                 return;
             }
 
-            var toSpawn = new List<FoodItemData>(_pendingLayer2);
-            _pendingLayer2.Clear();
+            // Lấy data của layer 2 (pending[0]) để spawn vào vật lý layer 1
+            var toSpawn = new List<FoodItemData>(_pendingLayers[0]);
+            _pendingLayers[0].Clear();
 
+            // FIX: Shift tất cả pending layer lên 1 bậc
+            // pending[1] (layer 3) → pending[0] (layer 2 mới)
+            // pending[2] (layer 4) → pending[1] (layer 3 mới)
+            for (int layerIdx = 0; layerIdx < _pendingLayers.Count - 1; layerIdx++)
+            {
+                _pendingLayers[layerIdx].AddRange(_pendingLayers[layerIdx + 1]);
+                _pendingLayers[layerIdx + 1].Clear();
+            }
+
+            // Spawn data lên vật lý layer 1
             for (int i = 0; i < toSpawn.Count; i++)
             {
                 FoodItemData data = toSpawn[i];
