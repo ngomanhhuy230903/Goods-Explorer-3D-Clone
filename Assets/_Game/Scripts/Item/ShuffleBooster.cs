@@ -63,7 +63,8 @@ namespace FoodMatch.Items
             // Pending layer2+ không có anchor riêng — chúng dùng lại anchor layer1
             // khi được promote. Nếu nhét tất cả vào allSlots sẽ thiếu anchor.
             // ══════════════════════════════════════════════════════════════════
-            var spawnedFoods = _gridSpawner.GetAllActiveFoods();
+            var spawnedFoods = _gridSpawner.GetAllActiveFoods()
+    .FindAll(f => f != null && f.OwnerTray != null);
 
             // Đếm tổng slot vật lý để biết bao nhiêu food có thể spawn ngay
             int totalPhysicalSlots = 0;
@@ -270,12 +271,12 @@ namespace FoodMatch.Items
         {
             if (_gridSpawner == null) return 0;
 
-            // cellContainer chưa được tạo (trước khi SpawnGrid chạy) → trả về 0
-            // tránh UnassignedReferenceException khi Editor poll CanExecute() lúc start
             var cellContainer = _gridSpawner.GetCellContainer();
             if (cellContainer == null) return 0;
 
-            int count = _gridSpawner.GetAllActiveFoods().Count;
+            // Chỉ đếm food đang thuộc FoodTray (OwnerTray != null)
+            int count = _gridSpawner.GetAllActiveFoods()
+                .FindAll(f => f != null && f.OwnerTray != null).Count;
 
             var allTrays = cellContainer
                 .GetComponentsInChildren<FoodTray>(includeInactive: false);
