@@ -246,29 +246,32 @@ namespace FoodMatch.Order
             }
 
             int totalFood = config.totalFoodCount;
-            int divisor = typeCount * 3;
 
-            // Làm tròn XUỐNG để đảm bảo totalFood ≤ capacity
-            // (nếu config đã đúng thì totalFood % divisor == 0, không thay đổi gì)
-            if (totalFood % divisor != 0)
+            // Chỉ cần chia hết cho 3 (không cần chia hết cho typeCount*3)
+            if (totalFood % 3 != 0)
             {
-                int corrected = (totalFood / divisor) * divisor;
-                Debug.LogWarning($"[OrderQueue] totalFood={totalFood} không chia hết cho " +
-                                 $"typeCount*3={divisor}. Làm tròn XUỐNG thành {corrected}. " +
-                                 $"Hãy gen lại LevelConfig bằng LevelGeneratorEditor!");
-                totalFood = Mathf.Max(divisor, corrected);
+                int corrected = (totalFood / 3) * 3;
+                Debug.LogWarning($"[OrderQueue] totalFood={totalFood} không chia hết cho 3. " +
+                                 $"Làm tròn XUỐNG thành {corrected}.");
+                totalFood = Mathf.Max(3, corrected);
             }
 
-            // Mỗi loại có đúng foodPerType items — chia đều tuyệt đối
-            int foodPerType = totalFood / typeCount;
+            // Phân phối đều nhất có thể, mỗi loại là bội số của 3
+            int basePerType = (totalFood / typeCount / 3) * 3;   // bội số 3, chia đều
+            int remainder = totalFood - basePerType * typeCount; // phần dư (bội số 3)
+            int extraTypes = remainder / 3; // số loại được thêm 3
 
             for (int i = 0; i < typeCount; i++)
-                for (int j = 0; j < foodPerType; j++)
+            {
+                int count = basePerType + (i < extraTypes ? 3 : 0);
+                for (int j = 0; j < count; j++)
                     result.Add(config.availableFoods[i]);
+            }
 
             ShuffleList(result);
+
             Log($"BuildCanonical: {result.Count} foods / {typeCount} types / " +
-                $"{foodPerType} mỗi loại / {foodPerType / 3} orders mỗi loại");
+                $"base {basePerType} mỗi loại / {extraTypes} loại được +3 thêm");
             return result;
         }
 
