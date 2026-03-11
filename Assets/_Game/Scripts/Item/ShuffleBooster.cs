@@ -16,6 +16,7 @@ namespace FoodMatch.Items
 
         private FoodGridSpawner _gridSpawner;
         private MonoBehaviour _runner;
+        private bool _isShuffling;
 
         // ── Timing (tổng ~2s) ─────────────────────────────────────────────────
         // Despawn: 0.12s × N food đồng thời + 0.05s buffer ≈ 0.17s
@@ -33,6 +34,7 @@ namespace FoodMatch.Items
 
         public bool CanExecute()
         {
+            if (_isShuffling) return false;
             if (_gridSpawner == null) return false;
             // cellContainer chưa assign → game chưa start, không execute
             if (_gridSpawner.GetCellContainer() == null) return false;
@@ -45,167 +47,176 @@ namespace FoodMatch.Items
 
         private IEnumerator ShuffleRoutine()
         {
-            // ══════════════════════════════════════════════════════════════════
-            // BƯỚC 1: KHÓA xoay ngay lập tức
-            // ══════════════════════════════════════════════════════════════════
-            _gridSpawner.LockRotation();
-            yield return null;
+            _isShuffling = true;
 
-            var allTrays = _gridSpawner.GetCellContainer()
-                .GetComponentsInChildren<FoodTray>(includeInactive: false);
-
-            // ══════════════════════════════════════════════════════════════════
-            // BƯỚC 2: Tách data thành 2 nhóm rõ ràng
-            //   • spawnableData  = food sẽ được shuffle vào slot vật lý (layer0+1)
-            //   • overflowData   = food vượt quá slot vật lý → giữ làm pending
-            //
-            // Lý do tách: allSlots chỉ có anchor layer0+layer1 (slot vật lý).
-            // Pending layer2+ không có anchor riêng — chúng dùng lại anchor layer1
-            // khi được promote. Nếu nhét tất cả vào allSlots sẽ thiếu anchor.
-            // ══════════════════════════════════════════════════════════════════
-            var spawnedFoods = _gridSpawner.GetAllActiveFoods()
-    .FindAll(f => f != null && f.OwnerTray != null);
-
-            // Đếm tổng slot vật lý để biết bao nhiêu food có thể spawn ngay
-            int totalPhysicalSlots = 0;
-            foreach (var tray in allTrays)
-                totalPhysicalSlots += tray.GetLayer0Anchors().Count
-                                    + tray.GetLayer1Anchors().Count;
-
-            // Gom TẤT CẢ data (spawned + pending mọi layer)
-            var allFoodData = new List<FoodItemData>();
-            foreach (var food in spawnedFoods)
-                if (food?.Data != null) allFoodData.Add(food.Data);
-            foreach (var tray in allTrays)
-                allFoodData.AddRange(tray.GetAllPendingData());
-
-            if (allFoodData.Count < 2)
+            try
             {
-                _gridSpawner.UnlockRotation();
-                Debug.LogWarning("[Shuffle] Không đủ food để shuffle.");
-                yield break;
-            }
+                // ══════════════════════════════════════════════════════════════════
+                // BƯỚC 1: KHÓA xoay ngay lập tức
+                // ══════════════════════════════════════════════════════════════════
+                _gridSpawner.LockRotation();
+                yield return null;
 
-            // Shuffle TOÀN BỘ data trước khi tách
-            for (int i = allFoodData.Count - 1; i > 0; i--)
-            {
-                int j = Random.Range(0, i + 1);
-                (allFoodData[i], allFoodData[j]) = (allFoodData[j], allFoodData[i]);
-            }
+                var allTrays = _gridSpawner.GetCellContainer()
+                    .GetComponentsInChildren<FoodTray>(includeInactive: false);
 
-            // Tách: phần đầu → spawn vào slot vật lý | phần sau → pending
-            int spawnCount = Mathf.Min(allFoodData.Count, totalPhysicalSlots);
-            var spawnableData = allFoodData.GetRange(0, spawnCount);
-            var overflowData = allFoodData.Count > spawnCount
-                ? allFoodData.GetRange(spawnCount, allFoodData.Count - spawnCount)
-                : new List<FoodItemData>();
+                // ══════════════════════════════════════════════════════════════════
+                // BƯỚC 2: Tách data thành 2 nhóm rõ ràng
+                //   • spawnableData  = food sẽ được shuffle vào slot vật lý (layer0+1)
+                //   • overflowData   = food vượt quá slot vật lý → giữ làm pending
+                //
+                // Lý do tách: allSlots chỉ có anchor layer0+layer1 (slot vật lý).
+                // Pending layer2+ không có anchor riêng — chúng dùng lại anchor layer1
+                // khi được promote. Nếu nhét tất cả vào allSlots sẽ thiếu anchor.
+                // ══════════════════════════════════════════════════════════════════
+                var spawnedFoods = _gridSpawner.GetAllActiveFoods()
+                    .FindAll(f => f != null && f.OwnerTray != null);
 
-            // ══════════════════════════════════════════════════════════════════
-            // BƯỚC 3: Thu thập slot vật lý (layer0 + layer1 của mọi tray)
-            // ══════════════════════════════════════════════════════════════════
-            var allSlots = new List<SlotInfo>();
-            foreach (var tray in allTrays)
-            {
-                foreach (var anchor in tray.GetLayer0Anchors())
+                // Đếm tổng slot vật lý để biết bao nhiêu food có thể spawn ngay
+                int totalPhysicalSlots = 0;
+                foreach (var tray in allTrays)
+                    totalPhysicalSlots += tray.GetLayer0Anchors().Count
+                                        + tray.GetLayer1Anchors().Count;
+
+                // Gom TẤT CẢ data (spawned + pending mọi layer)
+                var allFoodData = new List<FoodItemData>();
+                foreach (var food in spawnedFoods)
+                    if (food?.Data != null) allFoodData.Add(food.Data);
+                foreach (var tray in allTrays)
+                    allFoodData.AddRange(tray.GetAllPendingData());
+
+                if (allFoodData.Count < 2)
                 {
-                    if (anchor == null) continue;
-                    allSlots.Add(new SlotInfo { Anchor = anchor, LayerIndex = 0, OwnerTray = tray });
+                    _gridSpawner.UnlockRotation();
+                    Debug.LogWarning("[Shuffle] Không đủ food để shuffle.");
+                    yield break;
                 }
-                foreach (var anchor in tray.GetLayer1Anchors())
+
+                // Shuffle TOÀN BỘ data trước khi tách
+                for (int i = allFoodData.Count - 1; i > 0; i--)
                 {
-                    if (anchor == null) continue;
-                    allSlots.Add(new SlotInfo { Anchor = anchor, LayerIndex = 1, OwnerTray = tray });
+                    int j = Random.Range(0, i + 1);
+                    (allFoodData[i], allFoodData[j]) = (allFoodData[j], allFoodData[i]);
                 }
-            }
 
-            // ══════════════════════════════════════════════════════════════════
-            // BƯỚC 4: Unfollow + Despawn tất cả spawned food
-            // ══════════════════════════════════════════════════════════════════
-            foreach (var food in spawnedFoods)
-                food.GetComponent<SlotFollower>()?.Unfollow();
+                // Tách: phần đầu → spawn vào slot vật lý | phần sau → pending
+                int spawnCount = Mathf.Min(allFoodData.Count, totalPhysicalSlots);
+                var spawnableData = allFoodData.GetRange(0, spawnCount);
+                var overflowData = allFoodData.Count > spawnCount
+                    ? allFoodData.GetRange(spawnCount, allFoodData.Count - spawnCount)
+                    : new List<FoodItemData>();
 
-            yield return null;
-
-            foreach (var food in spawnedFoods)
-            {
-                var captured = food;
-                captured.transform
-                    .DOScale(Vector3.zero, DespawnDuration)
-                    .SetEase(Ease.InBack)
-                    .OnComplete(() =>
-                    {
-                        if (captured != null)
-                            PoolManager.Instance.ReturnFood(captured.FoodID, captured.gameObject);
-                    });
-            }
-
-            yield return new WaitForSeconds(DespawnDuration + 0.05f);
-
-            // ══════════════════════════════════════════════════════════════════
-            // BƯỚC 5: Clear tất cả stacks + pending
-            // ══════════════════════════════════════════════════════════════════
-            foreach (var tray in allTrays)
-                tray.ClearStacksAndPending();
-
-            // ══════════════════════════════════════════════════════════════════
-            // BƯỚC 6: Redistribute overflow vào pending của các tray
-            // Phân đều overflow vào layer1 capacity của từng tray (giống FoodTraySpawner)
-            // ══════════════════════════════════════════════════════════════════
-            if (overflowData.Count > 0)
-            {
-                int overflowIdx = 0;
-                // Vòng tròn qua các tray, mỗi tray nhận tối đa layer1Count pending
-                // (layer2 dùng lại slot layer1 khi promote — đúng với thiết kế FoodTray)
-                for (int t = 0; t < allTrays.Length && overflowIdx < overflowData.Count; t++)
+                // ══════════════════════════════════════════════════════════════════
+                // BƯỚC 3: Thu thập slot vật lý (layer0 + layer1 của mọi tray)
+                // ══════════════════════════════════════════════════════════════════
+                var allSlots = new List<SlotInfo>();
+                foreach (var tray in allTrays)
                 {
-                    int maxPending = allTrays[t].GetLayer1Anchors().Count;
-                    for (int k = 0; k < maxPending && overflowIdx < overflowData.Count; k++)
+                    foreach (var anchor in tray.GetLayer0Anchors())
                     {
-                        allTrays[t].AddPendingData(overflowData[overflowIdx++]);
+                        if (anchor == null) continue;
+                        allSlots.Add(new SlotInfo { Anchor = anchor, LayerIndex = 0, OwnerTray = tray });
+                    }
+                    foreach (var anchor in tray.GetLayer1Anchors())
+                    {
+                        if (anchor == null) continue;
+                        allSlots.Add(new SlotInfo { Anchor = anchor, LayerIndex = 1, OwnerTray = tray });
                     }
                 }
 
-                // Nếu vẫn còn thừa (rất hiếm), tiếp tục round-robin
-                int trayIndex = 0;
-                while (overflowIdx < overflowData.Count)
+                // ══════════════════════════════════════════════════════════════════
+                // BƯỚC 4: Unfollow + Despawn tất cả spawned food
+                // ══════════════════════════════════════════════════════════════════
+                foreach (var food in spawnedFoods)
+                    food.GetComponent<SlotFollower>()?.Unfollow();
+
+                yield return null;
+
+                foreach (var food in spawnedFoods)
                 {
-                    allTrays[trayIndex % allTrays.Length].AddPendingData(overflowData[overflowIdx++]);
-                    trayIndex++;
+                    var captured = food;
+                    captured.transform
+                        .DOScale(Vector3.zero, DespawnDuration)
+                        .SetEase(Ease.InBack)
+                        .OnComplete(() =>
+                        {
+                            if (captured != null)
+                                PoolManager.Instance.ReturnFood(captured.FoodID, captured.gameObject);
+                        });
                 }
 
-                Debug.Log($"[Shuffle] {overflowData.Count} food redistributed vào pending layer2.");
-            }
+                yield return new WaitForSeconds(DespawnDuration + 0.05f);
 
-            // ══════════════════════════════════════════════════════════════════
-            // BƯỚC 7: Spawn spawnableData vào slot vật lý
-            // ══════════════════════════════════════════════════════════════════
-            var neutralContainer = _gridSpawner.GetNeutralContainer();
-            if (neutralContainer == null)
-            {
+                // ══════════════════════════════════════════════════════════════════
+                // BƯỚC 5: Clear tất cả stacks + pending
+                // ══════════════════════════════════════════════════════════════════
+                foreach (var tray in allTrays)
+                    tray.ClearStacksAndPending();
+
+                // ══════════════════════════════════════════════════════════════════
+                // BƯỚC 6: Redistribute overflow vào pending của các tray
+                // Phân đều overflow vào layer1 capacity của từng tray (giống FoodTraySpawner)
+                // ══════════════════════════════════════════════════════════════════
+                if (overflowData.Count > 0)
+                {
+                    int overflowIdx = 0;
+                    // Vòng tròn qua các tray, mỗi tray nhận tối đa layer1Count pending
+                    // (layer2 dùng lại slot layer1 khi promote — đúng với thiết kế FoodTray)
+                    for (int t = 0; t < allTrays.Length && overflowIdx < overflowData.Count; t++)
+                    {
+                        int maxPending = allTrays[t].GetLayer1Anchors().Count;
+                        for (int k = 0; k < maxPending && overflowIdx < overflowData.Count; k++)
+                        {
+                            allTrays[t].AddPendingData(overflowData[overflowIdx++]);
+                        }
+                    }
+
+                    // Nếu vẫn còn thừa (rất hiếm), tiếp tục round-robin
+                    int trayIndex = 0;
+                    while (overflowIdx < overflowData.Count)
+                    {
+                        allTrays[trayIndex % allTrays.Length].AddPendingData(overflowData[overflowIdx++]);
+                        trayIndex++;
+                    }
+
+                    Debug.Log($"[Shuffle] {overflowData.Count} food redistributed vào pending layer2.");
+                }
+
+                // ══════════════════════════════════════════════════════════════════
+                // BƯỚC 7: Spawn spawnableData vào slot vật lý
+                // ══════════════════════════════════════════════════════════════════
+                var neutralContainer = _gridSpawner.GetNeutralContainer();
+                if (neutralContainer == null)
+                {
+                    _gridSpawner.UnlockRotation();
+                    Debug.LogError("[Shuffle] neutralContainer null!");
+                    yield break;
+                }
+
+                for (int i = 0; i < spawnCount; i++)
+                {
+                    var data = spawnableData[i];
+                    var slotInfo = allSlots[i];
+
+                    if (data?.prefab == null) continue;
+
+                    SpawnWithSnapThenAnimate(data, slotInfo, neutralContainer, i * StaggerDelay);
+                }
+
+                // ══════════════════════════════════════════════════════════════════
+                // BƯỚC 8: Mở khóa xoay sau khi animation hoàn tất
+                // ══════════════════════════════════════════════════════════════════
+                float lastDelay = (spawnCount - 1) * StaggerDelay;
+                yield return new WaitForSeconds(lastDelay + SpawnScaleDur + 0.05f);
+
                 _gridSpawner.UnlockRotation();
-                Debug.LogError("[Shuffle] neutralContainer null!");
-                yield break;
-            }
 
-            for (int i = 0; i < spawnCount; i++)
+                Debug.Log($"[Shuffle] Spawned={spawnCount} | Pending={overflowData.Count} | Total={allFoodData.Count}");
+            }
+            finally
             {
-                var data = spawnableData[i];
-                var slotInfo = allSlots[i];
-
-                if (data?.prefab == null) continue;
-
-                SpawnWithSnapThenAnimate(data, slotInfo, neutralContainer, i * StaggerDelay);
+                _isShuffling = false;
             }
-
-            // ══════════════════════════════════════════════════════════════════
-            // BƯỚC 8: Mở khóa xoay sau khi animation hoàn tất
-            // ══════════════════════════════════════════════════════════════════
-            float lastDelay = (spawnCount - 1) * StaggerDelay;
-            yield return new WaitForSeconds(lastDelay + SpawnScaleDur + 0.05f);
-
-            _gridSpawner.UnlockRotation();
-
-            Debug.Log($"[Shuffle] Spawned={spawnCount} | Pending={overflowData.Count} | Total={allFoodData.Count}");
         }
 
         // ─────────────────────────────────────────────────────────────────────
