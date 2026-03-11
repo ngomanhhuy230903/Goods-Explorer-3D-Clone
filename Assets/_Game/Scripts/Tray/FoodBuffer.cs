@@ -37,7 +37,21 @@ namespace FoodMatch.Tray
         private void OnDisable() => EventBus.OnNewOrderActive -= HandleNewOrderActive;
 
         // ─── Public API ───────────────────────────────────────────────────────
-
+        // Trong FoodBuffer.cs — thêm vào Public API
+        /// <summary>Dọn buffer + destroy toàn bộ food đang giữ.</summary>
+        public void ForceReset()
+        {
+            DOTween.Kill(bufferContainer);          // Kill tween layout
+            foreach (var food in _allFoods)
+            {
+                if (food == null) continue;
+                DOTween.Kill(food.transform);
+                PoolManager.Instance.ReturnFood(food.FoodID, food.gameObject);
+            }
+            _allFoods.Clear();
+            _bufferByType.Clear();
+            Log("ForceReset complete.");
+        }
         public void AddFood(FoodItem food)
         {
             if (food == null) return;

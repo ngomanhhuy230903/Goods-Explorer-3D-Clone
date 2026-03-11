@@ -53,6 +53,7 @@ namespace FoodMatch.Level
             else if (state == GameState.Win || state == GameState.Lose)
             {
                 FoodFlowController.Instance?.ResetDependencies();
+                FoodBuffer.Instance?.ForceReset();
                 backupTray?.ClearAllFood();
                 foodTraySpawner?.ClearFood();
                 orderQueue?.Reset();
@@ -175,6 +176,7 @@ namespace FoodMatch.Level
         private void ResetAllSystems()
         {
             FoodFlowController.Instance?.ResetDependencies();
+            FoodBuffer.Instance?.ForceReset();
             backupTray?.ClearAllFood();
             foodTraySpawner?.ClearFood();  // trước ClearGrid
             orderQueue?.Reset();
