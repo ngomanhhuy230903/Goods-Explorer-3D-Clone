@@ -45,7 +45,12 @@ namespace FoodMatch.Items
         private IEnumerator MagnetRoutine()
         {
             var targetTray = FindOldestActiveTray();
-            if (targetTray == null) yield break;
+            if (targetTray == null)
+            {
+                // Không có tray hợp lệ → release lock ngay
+                BoosterManager.Instance?.NotifyBoosterCompleted(BoosterName);
+                yield break;
+            }
 
             int trayKey = targetTray.TrayIndex;
             int foodID = targetTray.FoodID;
@@ -56,6 +61,7 @@ namespace FoodMatch.Items
             if (needed <= 0)
             {
                 Debug.Log($"[Magnet] tray#{trayKey} đang được fill đủ bởi lần trước, bỏ qua.");
+                BoosterManager.Instance?.NotifyBoosterCompleted(BoosterName);
                 yield break;
             }
 
@@ -65,6 +71,7 @@ namespace FoodMatch.Items
             if (foods.Count == 0)
             {
                 Debug.LogWarning("[Magnet] Không tìm thấy food trong FoodTray nào!");
+                BoosterManager.Instance?.NotifyBoosterCompleted(BoosterName);
                 yield break;
             }
 
@@ -87,9 +94,12 @@ namespace FoodMatch.Items
                     AnimateSingleFood(entry, targetTray, slot, cachedScale, delay, trayKey));
             }
 
-            yield return new WaitForSeconds(
-                (foods.Count - 1) * StaggerDelay + FlyDuration + 0.6f);
+            // Chờ toàn bộ animation hoàn thành
+            float totalWait = (foods.Count - 1) * StaggerDelay + FlyDuration + 0.6f;
+            yield return new WaitForSeconds(totalWait);
 
+            // ── Tất cả food đã bay xong → release lock ────────────────────────
+            BoosterManager.Instance?.NotifyBoosterCompleted(BoosterName);
             Debug.Log("[Magnet] Done.");
         }
 
@@ -103,14 +113,12 @@ namespace FoodMatch.Items
 
             if (food == null)
             {
-                // FIX: Spawn tại vị trí của FoodTray (không phải Vector3.zero)
                 food = SpawnFoodFromData(entry.Data, entry.SpawnWorldPosition);
                 if (food == null)
                 {
                     ReleaseReservation(trayKey);
                     yield break;
                 }
-                // FIX: Data đã được RemovePendingFood ngay lúc collect, không cần gọi lại ở đây
             }
             else
             {
@@ -167,33 +175,19 @@ namespace FoodMatch.Items
                 });
         }
 
-        // ── Core Fix: chỉ lấy food từ FoodTray, không lấy lung tung ──────────
+        // ── CollectFoodsFromFoodTrays (không thay đổi logic) ─────────────────
 
-        /// <summary>
-        /// Thu thập food từ các FoodTray theo thứ tự ưu tiên:
-        /// 1. Layer 0 (interactive, sẵn sàng)
-        /// 2. Layer 1 (greyed-out, vẫn spawned)
-        /// 3. Pending layer 2+ (chưa spawn — sẽ tạo GameObject tại vị trí FoodTray)
-        ///
-        /// FIX: Với pending food, RemovePendingFood NGAY TẠI ĐÂY để trừ khỏi FoodTray.TotalFoodCount
-        ///      trước khi animation bắt đầu, tránh race condition.
-        /// </summary>
         private List<FoodEntry> CollectFoodsFromFoodTrays(int foodID, int count)
         {
             var result = new List<FoodEntry>();
 
-            // Lấy tất cả FoodTray đang active trong scene
             var foodTrays = _gridSpawner.GetCellContainer()
                 .GetComponentsInChildren<FoodTray>(includeInactive: false);
 
-            // ── Pass 1: Layer 0 ───────────────────────────────────────────────
+            // Pass 1: Layer 0
             foreach (var tray in foodTrays)
             {
                 if (result.Count >= count) break;
-
-                var layer0Anchors = tray.GetLayer0Anchors();
-                // Duyệt qua item trong layer 0 của tray này
-                // (dùng TopItem + GetAllActiveFoods filtered by tray + layer)
                 var activeFoods = _gridSpawner.GetAllActiveFoods();
                 foreach (var f in activeFoods)
                 {
@@ -213,14 +207,13 @@ namespace FoodMatch.Items
                 }
             }
 
-            // ── Pass 2: Layer 1 ───────────────────────────────────────────────
+            // Pass 2: Layer 1
             if (result.Count < count)
             {
                 var activeFoods = _gridSpawner.GetAllActiveFoods();
                 foreach (var tray in foodTrays)
                 {
                     if (result.Count >= count) break;
-
                     foreach (var f in activeFoods)
                     {
                         if (result.Count >= count) break;
@@ -228,7 +221,6 @@ namespace FoodMatch.Items
                         if (f.FoodID != foodID) continue;
                         if (f.LayerIndex != 1) continue;
 
-                        // Không lấy item đã được chọn ở pass 1
                         bool alreadyPicked = false;
                         foreach (var e in result)
                             if (e.FoodItem == f) { alreadyPicked = true; break; }
@@ -246,23 +238,18 @@ namespace FoodMatch.Items
                 }
             }
 
-            // ── Pass 3: Pending layer 2+ ──────────────────────────────────────
-            // FIX: Spawn tại vị trí FoodTray, xoá ngay khỏi _pendingLayers
+            // Pass 3: Pending layer 2+
             if (result.Count < count)
             {
                 foreach (var tray in foodTrays)
                 {
                     if (result.Count >= count) break;
-
-                    // GetPendingFoodsOfType trả về list data match foodID trong toàn bộ pending layers
                     var pendingMatches = tray.GetPendingFoodsOfType(foodID);
                     foreach (var data in pendingMatches)
                     {
                         if (result.Count >= count) break;
                         if (data == null) continue;
 
-                        // FIX: Xoá khỏi FoodTray.pendingLayers NGAY LÚC NÀY
-                        // để TotalFoodCount và MaxFoodCapacity phản ánh đúng
                         bool removed = tray.RemovePendingFood(data);
                         if (!removed)
                         {
@@ -270,16 +257,13 @@ namespace FoodMatch.Items
                             continue;
                         }
 
-                        // Vị trí spawn = vị trí của FoodTray (center) để food xuất hiện đúng chỗ
-                        Vector3 spawnPos = tray.transform.position;
-
                         result.Add(new FoodEntry
                         {
-                            FoodItem = null,        // chưa có GameObject, sẽ spawn trong AnimateSingleFood
+                            FoodItem = null,
                             Data = data,
                             LayerIndex = 2,
                             OwnerTray = tray,
-                            SpawnWorldPosition = spawnPos
+                            SpawnWorldPosition = tray.transform.position
                         });
                     }
                 }
@@ -298,9 +282,6 @@ namespace FoodMatch.Items
             else _reservedSlots[trayKey] = next;
         }
 
-        /// <summary>
-        /// FIX: Spawn tại spawnWorldPosition (vị trí FoodTray) thay vì Vector3.zero.
-        /// </summary>
         private FoodItem SpawnFoodFromData(FoodItemData data, Vector3 spawnWorldPosition)
         {
             if (data == null) return null;
@@ -332,9 +313,6 @@ namespace FoodMatch.Items
             public FoodItemData Data;
             public int LayerIndex;
             public FoodTray OwnerTray;
-            /// <summary>
-            /// Vị trí world để spawn food (với pending layer: vị trí của FoodTray).
-            /// </summary>
             public Vector3 SpawnWorldPosition;
         }
     }

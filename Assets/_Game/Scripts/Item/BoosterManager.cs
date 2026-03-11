@@ -8,13 +8,13 @@ using FoodMatch.Managers;
 namespace FoodMatch.Items
 {
     /// <summary>
-    /// BoosterManager v2 — giữ nguyên Reflection auto-scan.
-    /// Thêm: tích hợp BoosterDatabase (SO) + BoosterInventory (quantity).
-    /// 
+    /// BoosterManager v3 — thêm global busy lock chống spam.
+    ///
     /// Flow:
     ///   1. AutoRegisterAll() → scan assembly, tạo IBooster instances
-    ///   2. UseBooster()      → check unlock + check quantity → Execute() → TryConsume()
-    ///   3. OnLevelUp()       → unlock booster mới + grant initialQuantity
+    ///   2. UseBooster()      → check _isBusy → check unlock + quantity → Execute() → TryConsume()
+    ///   3. NotifyBoosterCompleted() → mỗi IBooster.Execute() BẮT BUỘC gọi khi xong
+    ///   4. OnLevelUp()       → unlock booster mới + grant initialQuantity
     /// </summary>
     public class BoosterManager : MonoBehaviour
     {
@@ -27,8 +27,17 @@ namespace FoodMatch.Items
         // ── Runtime ───────────────────────────────────────────────────────────
         private readonly Dictionary<string, IBooster> _registry = new();
 
-        // Expose để BoosterButtonUI đọc quantity mà không cần ref database
+        /// <summary>
+        /// Global lock: true khi có booster đang thực thi.
+        /// Mọi UseBooster() mới đều bị chặn cho đến khi booster hiện tại
+        /// gọi NotifyBoosterCompleted().
+        /// </summary>
+        private bool _isBusy = false;
+
         public BoosterDatabase Database => database;
+
+        /// <summary>True khi có booster đang thực thi — để BoosterSlotView restore button nếu bị reject.</summary>
+        public bool IsBusy => _isBusy;
 
         // ── Unity ─────────────────────────────────────────────────────────────
         private void Awake()
@@ -45,6 +54,7 @@ namespace FoodMatch.Items
         public void AutoRegisterAll(BoosterContext context)
         {
             _registry.Clear();
+            _isBusy = false;
 
             var boosterInterface = typeof(IBooster);
             foreach (var type in Assembly.GetExecutingAssembly().GetTypes())
@@ -67,7 +77,6 @@ namespace FoodMatch.Items
                     continue;
                 }
 
-                // Validate: phải có BoosterData SO tương ứng
                 if (database != null && database.GetByName(booster.BoosterName) == null)
                     Debug.LogWarning($"[BoosterManager] '{booster.BoosterName}' chưa có BoosterData SO!");
 
@@ -75,7 +84,6 @@ namespace FoodMatch.Items
                 Debug.Log($"[BoosterManager] Registered: {booster.BoosterName}");
             }
 
-            // Sync unlock state theo level hiện tại
             if (database != null)
                 BoosterInventory.SyncUnlocksByLevel(database, SaveManager.CurrentLevel);
 
@@ -83,34 +91,39 @@ namespace FoodMatch.Items
         }
 
         /// <summary>
-        /// Gọi từ BoosterButtonUI khi người chơi nhấn nút booster.
+        /// Gọi từ BoosterSlotView khi người chơi nhấn nút booster.
+        /// Bị chặn nếu có booster khác đang chạy (_isBusy = true).
         /// </summary>
         public void UseBooster(string boosterName)
         {
+            // ── Global busy guard ─────────────────────────────────────────────
+            if (_isBusy)
+            {
+                Debug.Log($"[BoosterManager] Đang bận (booster khác đang chạy), bỏ qua '{boosterName}'.");
+                return;
+            }
+
             if (!_registry.TryGetValue(boosterName, out var booster))
             {
                 Debug.LogError($"[BoosterManager] Không tìm thấy: '{boosterName}'");
                 return;
             }
 
-            // ── Lookup SO (bắt buộc có — log lỗi rõ nếu thiếu) ──────────────
             var data = database?.GetByName(boosterName);
             if (data == null)
             {
                 Debug.LogError($"[BoosterManager] Không tìm thấy BoosterData SO cho '{boosterName}'. " +
-                               $"Kiểm tra: 1) Database SO đã gán vào BoosterManager chưa? " +
-                               $"2) boosterName trong SO có khớp chính xác không?");
-                return; // bắt buộc return — không thể consume nếu không có SO
+                               "Kiểm tra: 1) Database SO đã gán vào BoosterManager chưa? " +
+                               "2) boosterName trong SO có khớp chính xác không?");
+                return;
             }
 
-            // ── Check unlock ──────────────────────────────────────────────────
             if (!BoosterInventory.IsEverUnlocked(data))
             {
                 Debug.Log($"[BoosterManager] '{boosterName}' chưa được mở khóa.");
                 return;
             }
 
-            // ── Check quantity ────────────────────────────────────────────────
             if (!BoosterInventory.HasAny(data))
             {
                 Debug.Log($"[BoosterManager] '{boosterName}' hết lượt dùng.");
@@ -118,23 +131,36 @@ namespace FoodMatch.Items
                 return;
             }
 
-            // ── Check game-state condition ────────────────────────────────────
             if (!booster.CanExecute())
             {
                 Debug.Log($"[BoosterManager] '{boosterName}' không thể dùng lúc này.");
                 return;
             }
 
-            // ── Execute → consume → notify ────────────────────────────────────
-            booster.Execute();
+            // ── Lock → Consume → Execute ──────────────────────────────────────
+            // TryConsume sau khi đã qua hết guard để tránh trừ nhầm khi bị reject
+            _isBusy = true;
             BoosterInventory.TryConsume(data);
+            booster.Execute();
+            // QUAN TRỌNG: Execute() phải gọi NotifyBoosterCompleted() khi hoàn thành!
+
+            Debug.Log($"[BoosterManager] Using '{boosterName}'. Còn lại: {BoosterInventory.GetQuantity(data)}");
+        }
+
+        /// <summary>
+        /// BẮT BUỘC gọi từ mỗi IBooster.Execute() khi hiệu ứng đã hoàn thành.
+        /// Giải phóng lock và fire event để UI refresh.
+        /// Nếu quên gọi → game bị kẹt, không dùng được booster nào nữa.
+        /// </summary>
+        public void NotifyBoosterCompleted(string boosterName)
+        {
+            _isBusy = false;
             EventBus.RaiseBoosterActivated(boosterName);
-            Debug.Log($"[BoosterManager] Used '{boosterName}'. Còn lại: {BoosterInventory.GetQuantity(data)}");
+            Debug.Log($"[BoosterManager] '{boosterName}' completed. Lock released.");
         }
 
         /// <summary>
         /// Gọi khi người chơi lên level (từ LevelManager / GameManager).
-        /// Unlock booster mới + grant initialQuantity.
         /// </summary>
         public void OnLevelUp(int newLevel)
         {
@@ -150,7 +176,6 @@ namespace FoodMatch.Items
 
         /// <summary>
         /// Thêm quantity (reward, mua IAP, debug...).
-        /// Fire EventBus.OnBoosterQuantityChanged để UI refresh ngay không cần restart.
         /// </summary>
         public void AddBoosterQuantity(string boosterName, int amount)
         {
@@ -160,21 +185,36 @@ namespace FoodMatch.Items
                 Debug.LogWarning($"[BoosterManager] Không tìm thấy SO cho: '{boosterName}'");
                 return;
             }
-            BoosterInventory.UnlockAndGrant(data); // idempotent — safe gọi nhiều lần
+            BoosterInventory.UnlockAndGrant(data);
             int newQty = BoosterInventory.Add(data, amount);
-            // Fire activated event để BoosterAreaSpawner/SlotView refresh ngay
             EventBus.RaiseBoosterActivated(boosterName);
             Debug.Log($"[BoosterManager] +{amount} '{boosterName}'. Tổng: {newQty}");
         }
 
-        /// <summary>Query quantity để BoosterButtonUI hiển thị badge.</summary>
         public int GetQuantity(string boosterName)
         {
             var data = database?.GetByName(boosterName);
             return data != null ? BoosterInventory.GetQuantity(data) : 0;
         }
 
-        public void UnregisterAll() => _registry.Clear();
+        public void UnregisterAll()
+        {
+            _registry.Clear();
+            _isBusy = false;
+        }
+
+        /// <summary>
+        /// Reset busy flag khi game kết thúc (Win/Lose) để tránh kẹt lock.
+        /// Gọi từ GameManager.HandleGameStateChanged khi state = Win | Lose.
+        /// </summary>
+        public void ForceReleaseLock()
+        {
+            if (_isBusy)
+            {
+                _isBusy = false;
+                Debug.LogWarning("[BoosterManager] ForceReleaseLock called.");
+            }
+        }
 
 #if UNITY_EDITOR
         [ContextMenu("Debug: Add 3 to ALL Boosters")]
@@ -207,6 +247,9 @@ namespace FoodMatch.Items
             BoosterInventory.ResetAll(database);
             Debug.LogWarning("[DEBUG] Đã reset toàn bộ booster data.");
         }
+
+        [ContextMenu("Debug: Force Release Lock")]
+        private void DebugForceReleaseLock() => ForceReleaseLock();
 #endif
     }
 }

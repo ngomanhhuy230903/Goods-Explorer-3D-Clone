@@ -38,7 +38,11 @@ namespace FoodMatch.Items
         private IEnumerator ClearRoutine()
         {
             var foods = _backupTray.GetAllFoods();
-            if (foods.Count == 0) yield break;
+            if (foods.Count == 0)
+            {
+                BoosterManager.Instance?.NotifyBoosterCompleted(BoosterName);
+                yield break;
+            }
 
             Vector3 bufferPos = _foodBuffer.transform.position;
 
@@ -48,7 +52,6 @@ namespace FoodMatch.Items
                 if (food == null) continue;
 
                 _backupTray.TryRemoveFood(food);
-
                 var capturedFood = food;
                 capturedFood.transform
                     .DOJump(bufferPos, JumpPower, 1, FlyDuration)
@@ -57,8 +60,13 @@ namespace FoodMatch.Items
                     .OnComplete(() => _foodBuffer.AddFood(capturedFood));
             }
 
-            yield return new WaitForSeconds(
-                (foods.Count - 1) * StaggerDelay + FlyDuration + 0.1f);
+            // Chờ animation cuối cùng hoàn thành
+            float totalWait = (foods.Count - 1) * StaggerDelay + FlyDuration + 0.1f;
+            yield return new WaitForSeconds(totalWait);
+
+            // ── Tất cả food đã bay vào buffer → release lock ──────────────────
+            BoosterManager.Instance?.NotifyBoosterCompleted(BoosterName);
+            Debug.Log("[ClearTray] Done.");
         }
     }
 }

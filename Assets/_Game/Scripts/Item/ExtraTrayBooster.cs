@@ -3,13 +3,14 @@ using FoodMatch.Tray;
 
 namespace FoodMatch.Items
 {
-    [Booster] // ← Chỉ cần dòng này để tự động được đăng ký
+    [Booster]
     public class ExtraTrayBooster : IBooster
     {
         public string BoosterName => "ExtraTray";
 
         private BackupTray _backupTray;
         private BackupTraySpawner _spawner;
+
         private const int MaxSlots = 7;
 
         public void Initialize(BoosterContext ctx)
@@ -21,6 +22,7 @@ namespace FoodMatch.Items
         public bool CanExecute()
         {
             if (_backupTray == null || _spawner == null) return false;
+            // Chặn nếu đã đạt max — BoosterManager._isBusy đã chặn spam từ bên ngoài
             return _backupTray.Capacity < MaxSlots;
         }
 
@@ -28,6 +30,10 @@ namespace FoodMatch.Items
         {
             _spawner.AddExtraSlot();
             Debug.Log($"[ExtraTray] +1 slot. Capacity: {_backupTray.Capacity}");
+
+            // AddExtraSlot là synchronous (không có animation chờ đợi)
+            // → release lock ngay sau khi spawn xong
+            BoosterManager.Instance?.NotifyBoosterCompleted(BoosterName);
         }
     }
 }

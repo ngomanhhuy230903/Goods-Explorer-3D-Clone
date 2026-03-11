@@ -81,7 +81,6 @@ namespace FoodMatch.Items
                 return;
             }
 
-            // Lấy danh sách cần spawn
             var toSpawn = new List<BoosterData>();
             int currentLevel = SaveManager.CurrentLevel;
 
@@ -93,22 +92,18 @@ namespace FoodMatch.Items
 
             if (toSpawn.Count == 0) return;
 
-            // Tính vị trí căn giữa — giống CalculateSlotLocalPos trong BackupTraySpawner
             for (int i = 0; i < toSpawn.Count; i++)
             {
                 var slot = Instantiate(slotPrefab, slotContainer);
                 slot.name = $"BoosterSlot_{toSpawn[i].boosterName}";
 
-                // Đặt vị trí local (anchored position)
                 var rt = slot.GetComponent<RectTransform>();
                 if (rt != null)
                     rt.anchoredPosition = CalculateSlotPos(i, toSpawn.Count);
 
-                // Bind data
                 slot.Bind(toSpawn[i]);
                 _activeSlots.Add(slot);
 
-                // Scale-in stagger
                 slot.transform.localScale = Vector3.zero;
                 int captured = i;
                 DOVirtual.DelayedCall(captured * staggerDelay, () =>
@@ -132,10 +127,6 @@ namespace FoodMatch.Items
 
         // ── Layout ────────────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Căn giữa theo trục X quanh pivot của slotContainer.
-        /// Cùng công thức với BackupTraySpawner.CalculateSlotLocalPos.
-        /// </summary>
         private Vector2 CalculateSlotPos(int index, int totalCount)
         {
             float totalWidth = (totalCount - 1) * slotSpacingX;
@@ -146,10 +137,28 @@ namespace FoodMatch.Items
         // ── Event Handler ─────────────────────────────────────────────────────
 
         /// <summary>
-        /// Sau khi dùng hoặc thêm booster → refresh toàn bộ slot đó.
-        /// Dùng Bind() để đảm bảo icon color + button state đều đúng.
+        /// Fire từ BoosterManager.NotifyBoosterCompleted() — tức là SAU KHI
+        /// booster đã thực hiện xong. Chỉ refresh quantity + button state của slot đó.
         /// </summary>
         private void HandleBoosterActivated(string boosterName)
+        {
+            if (database?.GetByName(boosterName) == null) return;
+
+            foreach (var slot in _activeSlots)
+            {
+                if (slot == null) continue;
+                if (slot.name == $"BoosterSlot_{boosterName}")
+                {
+                    slot.RefreshQuantity(); // ← gọi RefreshQuantity thay vì OnBoosterCompleted
+                    break;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Khi lên level unlock booster mới → Bind lại slot tương ứng.
+        /// </summary>
+        private void HandleBoosterUnlocked(string boosterName)
         {
             var data = database?.GetByName(boosterName);
             if (data == null) return;
@@ -159,29 +168,8 @@ namespace FoodMatch.Items
                 if (slot == null) continue;
                 if (slot.name == $"BoosterSlot_{boosterName}")
                 {
-                    slot.Bind(data); // Bind lại để refresh icon color + badge + button
-                    break;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Khi lên level unlock booster mới → refresh slot tương ứng (không rebuild cả list).
-        /// </summary>
-        private void HandleBoosterUnlocked(string boosterName)
-        {
-            foreach (var slot in _activeSlots)
-            {
-                // Rebind để cập nhật lock state
-                var data = database.GetByName(boosterName);
-                if (data == null) continue;
-
-                // Tìm đúng slot
-                if (slot.name == $"BoosterSlot_{boosterName}")
-                {
                     slot.Bind(data);
 
-                    // Unlock animation
                     slot.transform.DOKill();
                     slot.transform
                         .DOScale(Vector3.one * 1.2f, 0.2f).SetEase(Ease.OutBack)
