@@ -12,11 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d08a09ed52c99144daa9addffecb559b, type: 3}
   m_Name: BoosterData_Shuffle
   m_EditorClassIdentifier: 
-  boosterName: 
-  requiredLevel: 1
-  icon: {fileID: 0}
-  displayName: 
-  description: 
+  boosterName: Shuffle
+  requiredLevel: 7
+  icon: {fileID: 21300000, guid: 4e1e4e7bc1e404ba49f38d90db688820, type: 3}
+  displayName: Shuffle
+  description: Shuffle
   initialQuantity: 1
   maxQuantity: 999
   rewardQuantity: 1

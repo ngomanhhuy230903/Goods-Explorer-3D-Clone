@@ -12,11 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d08a09ed52c99144daa9addffecb559b, type: 3}
   m_Name: BoosterData_ExtraTray
   m_EditorClassIdentifier: 
-  boosterName: 
-  requiredLevel: 1
-  icon: {fileID: 0}
-  displayName: 
-  description: 
+  boosterName: ExtraTray
+  requiredLevel: 3
+  icon: {fileID: 21300000, guid: 0882cf9c9c13842c9a3aa4fb74800f83, type: 3}
+  displayName: ExtraTray
+  description: ExtraTray
   initialQuantity: 1
   maxQuantity: 999
   rewardQuantity: 1

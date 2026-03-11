@@ -12,11 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d08a09ed52c99144daa9addffecb559b, type: 3}
   m_Name: BoosterData_Magnet
   m_EditorClassIdentifier: 
-  boosterName: 
-  requiredLevel: 1
-  icon: {fileID: 0}
-  displayName: 
-  description: 
+  boosterName: Magnet
+  requiredLevel: 5
+  icon: {fileID: 21300000, guid: ea73c8c20afcd4bf4b8a82f0bedfe2ff, type: 3}
+  displayName: Magnet
+  description: Magnet
   initialQuantity: 1
   maxQuantity: 999
   rewardQuantity: 1

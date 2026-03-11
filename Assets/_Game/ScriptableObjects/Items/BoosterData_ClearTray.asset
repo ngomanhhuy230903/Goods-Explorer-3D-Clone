@@ -12,11 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d08a09ed52c99144daa9addffecb559b, type: 3}
   m_Name: BoosterData_ClearTray
   m_EditorClassIdentifier: 
-  boosterName: 
-  requiredLevel: 1
-  icon: {fileID: 0}
-  displayName: 
-  description: 
+  boosterName: ClearTray
+  requiredLevel: 9
+  icon: {fileID: 21300000, guid: 12aeed38be02a418590ffc45a09f0bdd, type: 3}
+  displayName: ClearTray
+  description: ClearTray
   initialQuantity: 1
   maxQuantity: 999
   rewardQuantity: 1
