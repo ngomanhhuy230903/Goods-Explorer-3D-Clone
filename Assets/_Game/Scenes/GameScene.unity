@@ -596,7 +596,7 @@ MonoBehaviour:
   prefabHeightY: 1
   containerPositionZ: 230
   baseY: 0
-  rowGap: 39
+  rowGap: 30
   idleTimeBeforeRotate: 5
   autoRotateSpeed: 20
   rotateEaseInDuration: 1

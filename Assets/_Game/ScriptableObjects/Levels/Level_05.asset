@@ -26,3 +26,8 @@ MonoBehaviour:
   maxActiveOrders: 2
   backupTrayCapacity: 5
   timeLimitSeconds: 0
+  obstacles: []
+  obstaclePreset: {fileID: 0}
+  references:
+    version: 2
+    RefIds: []

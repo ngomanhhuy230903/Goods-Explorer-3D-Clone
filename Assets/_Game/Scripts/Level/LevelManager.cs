@@ -4,6 +4,7 @@ using FoodMatch.Core;
 using FoodMatch.Food;
 using FoodMatch.Order;
 using FoodMatch.Tray;
+using FoodMatch.Obstacle;
 
 namespace FoodMatch.Level
 {
@@ -35,6 +36,8 @@ namespace FoodMatch.Level
         // ─── Runtime ──────────────────────────────────────────────────────────
         public LevelConfig CurrentConfig { get; private set; }
         public int CurrentLevelIndex { get; private set; } = 1;
+        [Header("─── Obstacles ────────────────────────")]
+        [SerializeField] private ObstacleManager obstacleManager;
 
         // ─────────────────────────────────────────────────────────────────────
         private void Awake()
@@ -104,7 +107,7 @@ namespace FoodMatch.Level
 
             InjectFoodFlowController(); // 5. Inject dependencies
             InitProgressTracker(config); // 6.
-
+            obstacleManager?.InitializeObstacles(config);
             GameManager.Instance.ChangeState(GameState.Play);
             Debug.Log($"[LevelManager] Level {levelIndex} sẵn sàng!");
         }
@@ -177,6 +180,7 @@ namespace FoodMatch.Level
         {
             FoodFlowController.Instance?.ResetDependencies();
             FoodBuffer.Instance?.ForceReset();
+            obstacleManager?.ResetObstacles();
             backupTray?.ClearAllFood();
             foodTraySpawner?.ClearFood();  // trước ClearGrid
             orderQueue?.Reset();

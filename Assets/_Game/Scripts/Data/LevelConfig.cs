@@ -55,7 +55,13 @@ namespace FoodMatch.Data
         [Tooltip("Thời gian giới hạn (giây). Set 0 = không giới hạn thời gian.")]
         [Min(0)]
         public float timeLimitSeconds = 0f;
+        [Header("─── Obstacles ───────────────────────")]
+        [HideInInspector] // ẩn default drawer, CustomEditor sẽ vẽ lại
+        [SerializeReference]
+        public List<ObstacleData> obstacles = new List<ObstacleData>();
 
+        [HideInInspector] // chỉ dùng trong Editor
+        public ObstaclePreset obstaclePreset;
         // ─── Validation ───────────────────────────────────────────────────────
 #if UNITY_EDITOR
         private void OnValidate()
@@ -95,7 +101,38 @@ namespace FoodMatch.Data
                 Debug.LogError($"[LevelConfig] Level {levelIndex}: totalFoodCount không chia hết cho 3!");
                 return false;
             }
+
+            // Validate từng obstacle
+            if (obstacles != null)
+            {
+                foreach (var o in obstacles)
+                {
+                    if (o == null) continue;
+                    if (!o.IsValid())
+                    {
+                        Debug.LogError($"[LevelConfig] Level {levelIndex}: " +
+                                       $"Obstacle '{o.ObstacleName}' không hợp lệ!");
+                        return false;
+                    }
+                }
+            }
             return true;
         }
+        // ─── Obstacle Helpers ─────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Lấy obstacle theo kiểu. Trả về null nếu không tồn tại hoặc disabled.
+        /// Dùng: config.GetObstacle<LockObstacleData>()
+        /// </summary>
+        public T GetObstacle<T>() where T : ObstacleData
+        {
+            if (obstacles == null) return null;
+            foreach (var o in obstacles)
+                if (o is T typed && typed.isEnabled) return typed;
+            return null;
+        }
+        /// <summary>Kiểm tra obstacle có tồn tại và được bật không.</summary>
+        public bool HasObstacle<T>() where T : ObstacleData => GetObstacle<T>() != null;
+
     }
 }
