@@ -78,7 +78,6 @@ namespace FoodMatch.Tray
         public int Columns { get; private set; }
         public int Rows { get; private set; }
 
-        // neutralContainer: chứa Food, scale luôn (1,1,1), tạo runtime
         private Transform _neutralContainer;
 
         // Auto-rotate state
@@ -87,8 +86,6 @@ namespace FoodMatch.Tray
         private float _currentRotSpeed = 0f;
         private Tweener _rotateTweener = null;
 
-        // Khóa xoay cứng — ShuffleBooster set true trong lúc shuffle
-        // Khi locked: Update() bỏ qua idle timer và xoay hoàn toàn
         private bool _isRotationLocked = false;
 
         // ─────────────────────────────────────────────────────────────────────
@@ -101,7 +98,6 @@ namespace FoodMatch.Tray
             Columns = Mathf.Max(3, config.trayColumns);
             Rows = Mathf.Max(1, config.trayRows);
 
-            // ── CellContainer ──────────────────────────────────────────────
             if (cellContainer == null)
             {
                 var go = new GameObject("CellContainer");
@@ -109,7 +105,6 @@ namespace FoodMatch.Tray
                 cellContainer = go.transform;
             }
 
-            // ── NeutralContainer (sibling của CellContainer) ───────────────
             if (_neutralContainer != null)
                 Destroy(_neutralContainer.gameObject);
 
@@ -120,7 +115,7 @@ namespace FoodMatch.Tray
             ncGO.transform.localScale = Vector3.one;
             _neutralContainer = ncGO.transform;
 
-            _isRotationLocked = false; // reset lock khi spawn level mới
+            _isRotationLocked = false;
             ResetIdleTimer();
             StartCoroutine(SpawnAfterLayout());
         }
@@ -137,10 +132,8 @@ namespace FoodMatch.Tray
             _grid.Clear();
 
             if (_neutralContainer != null)
-            {
                 foreach (Transform child in _neutralContainer)
                     Destroy(child.gameObject);
-            }
         }
 
         // ─── Update ───────────────────────────────────────────────────────────
@@ -148,8 +141,6 @@ namespace FoodMatch.Tray
         private void Update()
         {
             if (cellContainer == null || _grid.Count == 0) return;
-
-            // Đang bị khóa (shuffle chạy) → không đếm idle, không xoay
             if (_isRotationLocked) return;
 
             _idleTimer += Time.deltaTime;
@@ -174,7 +165,6 @@ namespace FoodMatch.Tray
         /// <summary>
         /// Dừng xoay CỨNG ngay lập tức + đánh dấu locked.
         /// ShuffleBooster gọi khi bắt đầu shuffle để anchor positions không drift.
-        /// Khác NotifyInteraction: không ease-out, hard-stop trong 1 frame.
         /// </summary>
         public void LockRotation()
         {
@@ -318,12 +308,33 @@ namespace FoodMatch.Tray
             }
 
             // ════════════════════════════════════════════════════════════════
-            // BƯỚC 5: Chờ animation CUỐI CÙNG xong → invoke OnSpawnComplete
+            // BƯỚC 5: Chờ animation hoàn tất
             // ════════════════════════════════════════════════════════════════
             yield return new WaitForSeconds(totalAnimTime);
 
+            // ════════════════════════════════════════════════════════════════
+            // BƯỚC 6: Refix BoxCollider trên children của mỗi FoodTray
+            // Dịch localPosition.x và nhân rotation Z của 2 empty object viền
+            // để collider khớp đúng với visual sau khi cell bị scale X
+            // ════════════════════════════════════════════════════════════════
+            int fixCount = 0;
+            foreach (var rowList in _grid)
+            {
+                foreach (var cellTransform in rowList)
+                {
+                    if (cellTransform == null) continue;
+                    var trays = cellTransform.GetComponentsInChildren<FoodTray>(includeInactive: true);
+                    foreach (var tray in trays)
+                    {
+                        tray.RefixColliders();
+                        fixCount++;
+                    }
+                }
+            }
+
             if (verboseLog)
-                Debug.Log($"[FoodGridSpawner] Tất cả {totalCells} cell đã scale xong → invoke OnSpawnComplete.");
+                Debug.Log($"[FoodGridSpawner] {totalCells} cell scale xong. " +
+                          $"RefixColliders: {fixCount} tray(s) → invoke OnSpawnComplete.");
 
             OnSpawnComplete?.Invoke();
         }
@@ -375,26 +386,18 @@ namespace FoodMatch.Tray
         {
             var result = new List<FoodMatch.Food.FoodItem>();
             if (_neutralContainer == null) return result;
-
-            var foods = _neutralContainer
-                .GetComponentsInChildren<FoodMatch.Food.FoodItem>(includeInactive: false);
-            result.AddRange(foods);
+            result.AddRange(_neutralContainer
+                .GetComponentsInChildren<FoodMatch.Food.FoodItem>(includeInactive: false));
             return result;
         }
 
-        /// <summary>
-        /// Quét tất cả FoodTray con, gom pending data layer 2+ theo foodID.
-        /// MagnetBooster dùng để lấy food chưa spawn.
-        /// </summary>
         public List<FoodMatch.Data.FoodItemData> GetPendingFoodsOfType(int foodID)
         {
             var result = new List<FoodMatch.Data.FoodItemData>();
             if (cellContainer == null) return result;
 
-            var trays = cellContainer
-                .GetComponentsInChildren<FoodTray>(includeInactive: false);
-
-            foreach (var tray in trays)
+            foreach (var tray in cellContainer
+                .GetComponentsInChildren<FoodTray>(includeInactive: false))
                 result.AddRange(tray.GetPendingFoodsOfType(foodID));
 
             return result;
