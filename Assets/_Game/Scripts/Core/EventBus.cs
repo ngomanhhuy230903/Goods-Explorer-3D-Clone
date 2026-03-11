@@ -41,7 +41,14 @@ namespace FoodMatch.Core
         public static event Action OnGameResumed;
 
         // ─── Booster Events ───────────────────────────────────────────────────
+        /// <summary>Booster đã được Execute thành công (trừ quantity).</summary>
         public static event Action<string> OnBoosterActivated;
+
+        /// <summary>Booster vừa được mở khóa lần đầu khi lên level.</summary>
+        public static event Action<string> OnBoosterUnlocked;
+
+        /// <summary>Người chơi nhấn dùng nhưng quantity = 0 → gợi ý mua thêm.</summary>
+        public static event Action<string> OnBoosterOutOfStock;
 
         // ─── Raise Helpers ────────────────────────────────────────────────────
         public static void RaiseFoodSelected(FoodItemData food) => OnFoodSelected?.Invoke(food);
@@ -50,10 +57,7 @@ namespace FoodMatch.Core
         public static void RaiseOrderCompleted(int trayIndex) => OnOrderCompleted?.Invoke(trayIndex);
         public static void RaiseOrderLeft(int trayIndex) => OnOrderLeft?.Invoke(trayIndex);
         public static void RaiseAllOrdersCompleted() => OnAllOrdersCompleted?.Invoke();
-
-        /// <summary>Gọi bởi OrderTray khi state chuyển sang Active (enter animation xong).</summary>
         public static void RaiseNewOrderActive(int foodID) => OnNewOrderActive?.Invoke(foodID);
-
         public static void RaiseBackupExpanded(int newCapacity) => OnBackupTrayExpanded?.Invoke(newCapacity);
         public static void RaiseBackupWarning(int current, int max) => OnBackupTrayWarning?.Invoke(current, max);
         public static void RaiseBackupFull() => OnBackupTrayFull?.Invoke();
@@ -62,13 +66,19 @@ namespace FoodMatch.Core
         public static void RaiseLevelLose(int index) => OnLevelLose?.Invoke(index);
         public static void RaiseGamePaused() => OnGamePaused?.Invoke();
         public static void RaiseGameResumed() => OnGameResumed?.Invoke();
-        public static void RaiseBoosterActivated(string name) => OnBoosterActivated?.Invoke(name);
         public static void RaiseBufferFoodReady(int foodID) => OnBufferFoodReady?.Invoke(foodID);
+
+        public static void RaiseBoosterActivated(string name) => OnBoosterActivated?.Invoke(name);
+        public static void RaiseBoosterUnlocked(string name) => OnBoosterUnlocked?.Invoke(name);
+        public static void RaiseBoosterOutOfStock(string name) => OnBoosterOutOfStock?.Invoke(name);
+
+        // ─── Cleanup ──────────────────────────────────────────────────────────
         public static void ClearAllEvents()
         {
             OnFoodSelected = null;
             OnFoodMatchedCustomer = null;
             OnFoodSentToBackup = null;
+            OnBufferFoodReady = null;
             OnOrderCompleted = null;
             OnOrderLeft = null;
             OnAllOrdersCompleted = null;
@@ -82,7 +92,8 @@ namespace FoodMatch.Core
             OnGamePaused = null;
             OnGameResumed = null;
             OnBoosterActivated = null;
-            OnBufferFoodReady = null;
+            OnBoosterUnlocked = null;
+            OnBoosterOutOfStock = null;
             Debug.Log("[EventBus] Tất cả events đã được dọn sạch.");
         }
     }
