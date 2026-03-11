@@ -230,6 +230,7 @@ namespace FoodMatch.Order
                          .SetEase(Ease.OutCubic)
                          .SetUpdate(true);
         }
+
         /// <summary>
         /// Thử match food VÀ reserve slot ngay lập tức.
         /// Nếu slot tiếp theo đã bị reserve, tìm slot kế tiếp còn trống.
@@ -284,22 +285,47 @@ namespace FoodMatch.Order
             int next = OrderData?.DeliveredCount ?? 0;
             return next < slots.Count ? slots[next].FoodTargetScale : Vector3.one;
         }
+
         public int FoodID => OrderData?.FoodID ?? -1;
         public int RemainingCount => OrderData?.RemainingCount ?? 0;
+
+        // ── Delivery Confirm (2-phase) ────────────────────────────────────────
+
         /// <summary>
-        /// Confirm delivery tại slotIndex. Gọi SAU khi animation kết thúc.
-        /// Slot reservation sẽ được release tự động bởi command.
+        /// [PHASE 1] Đánh dấu delivered về mặt LOGIC ngay lập tức, TRƯỚC khi animation bay xong.
+        /// Gọi ngay sau khi food bắt đầu bay → OrderData.DeliveredCount tăng ngay →
+        /// food thứ 2 cùng type sẽ thấy slot tiếp theo, không bị đánh trùng.
         /// </summary>
-        public void ConfirmDelivery(int slotIndex)
+        public void PreConfirmDelivery(int slotIndex)
+        {
+            if (slotIndex < 0 || slotIndex >= slots.Count) return;
+            OrderData.Deliver();
+            // Không transition Completed ở đây — đợi FinalizeDeliveryVisual
+            // để animation đáp xuống xong rồi mới show hiệu ứng hoàn thành.
+        }
+
+        /// <summary>
+        /// [PHASE 2] Chạy visual sau khi food đáp xuống slot (OnComplete của fly animation).
+        /// - Nếu order IsCompleted → TransitionTo Completed.
+        /// </summary>
+        public void FinalizeDeliveryVisual(int slotIndex)
         {
             if (slotIndex < 0 || slotIndex >= slots.Count) return;
 
-            OrderData.Deliver();
             slots[slotIndex].PlayReceiveAnimation();
             slots[slotIndex].MarkDelivered();
 
             if (OrderData.IsCompleted)
                 TransitionTo(OrderTrayStateId.Completed);
+        }
+
+        /// <summary>
+        /// Legacy single-call confirm. Dùng khi chỉ có 1 food bay (không cần tách phase).
+        /// </summary>
+        public void ConfirmDelivery(int slotIndex)
+        {
+            PreConfirmDelivery(slotIndex);
+            FinalizeDeliveryVisual(slotIndex);
         }
 
         /// <summary>Hủy reservation nếu food bay bị cancel/fail.</summary>
@@ -322,6 +348,7 @@ namespace FoodMatch.Order
             _currentState = nextState;
             _currentState.Enter();
         }
+
         /// <summary>
         /// Trả về FoodTargetScale của slot tại <paramref name="slotIndex"/>.
         /// MagnetBooster cache giá trị này TRƯỚC khi bất kỳ ConfirmDelivery nào được gọi
