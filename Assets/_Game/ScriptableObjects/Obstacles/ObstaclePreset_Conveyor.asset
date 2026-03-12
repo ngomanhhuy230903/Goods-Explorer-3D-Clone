@@ -22,5 +22,5 @@ MonoBehaviour:
       type: {class: ConveyorObstacleData, ns: FoodMatch.Data, asm: Assembly-CSharp}
       data:
         isEnabled: 1
-        foodCount: 6
+        foodCount: 12
         speed: 2

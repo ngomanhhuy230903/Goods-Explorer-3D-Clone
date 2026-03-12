@@ -33,23 +33,21 @@ namespace FoodMatch.Tray
         private Transform _neutralContainer;
 
         // ─── BoxCollider Fix ──────────────────────────────────────────────────
-        // Chỉ nhân rotation Z của 2 empty object chứa collider theo scaleX.
-        // Không thay đổi bất kỳ thứ gì khác.
-        //
-        // Tại sao cần cache originalLossyScaleX:
-        //   - Awake chạy ngay khi Instantiate, lúc này cell cha chưa scale
-        //     → lossyScale.x = scale gốc (ví dụ 300)
-        //   - RefixColliders() gọi sau animation, lúc này cell cha đã scale
-        //     → lossyScale.x = scale mới (ví dụ 600)
-        //   - scaleXMultiple = lossyScale_mới / lossyScale_gốc = 600/300 = 2
-        //   - rotZ mới = originalRotZ * 2 → 25° → 50°, -25° → -50° ✓
         private BoxCollider[] _childColliders;
-        private float[] _originalRotZ;        // rotation Z gốc, normalized -180..180
-        private float _originalLossyScaleX; // lossyScale.x của FoodTray lúc Awake
+        private float[] _originalRotZ;
+        private float _originalLossyScaleX;
+
+        // ─── Properties ───────────────────────────────────────────────────────
 
         public int TrayID { get; private set; }
         public FoodItem TopItem => _stacks[0].Count > 0 ? _stacks[0][0] : null;
         public bool IsEmpty => TopItem == null;
+
+        /// <summary>
+        /// Khi true: TryPopItem() từ chối mọi tương tác (tray đang bị LockObstacle khóa).
+        /// </summary>
+        public bool IsLocked { get; private set; } = false;
+
         public int TotalAnchorCapacity => layer0Anchors.Count + layer1Anchors.Count;
 
         public int TotalFoodCount
@@ -77,11 +75,8 @@ namespace FoodMatch.Tray
             for (int i = 0; i < MAX_LAYER_COUNT - 2; i++)
                 _pendingLayers.Add(new List<FoodItemData>());
 
-            // Cache lossyScale.x của FoodTray TRƯỚC KHI cell cha scale
-            // Đây là giá trị gốc để tính tỉ lệ sau này
             _originalLossyScaleX = transform.lossyScale.x;
 
-            // Cache BoxCollider của các object CON
             var all = GetComponentsInChildren<BoxCollider>(includeInactive: true);
             var childList = new List<BoxCollider>();
             foreach (var col in all)
@@ -93,33 +88,29 @@ namespace FoodMatch.Tray
 
             for (int i = 0; i < _childColliders.Length; i++)
             {
-                // Normalize về -180..180 để giữ đúng dấu âm/dương
                 float z = _childColliders[i].transform.localEulerAngles.z;
                 if (z > 180f) z -= 360f;
                 _originalRotZ[i] = z;
             }
         }
 
-        // ─── Public: Collider Fix ─────────────────────────────────────────────
+        // ─── Lock / Unlock ────────────────────────────────────────────────────
 
         /// <summary>
-        /// Gọi từ FoodGridSpawner sau khi DOTween scale animation hoàn tất.
-        ///
-        /// scaleXMultiple = lossyScale.x hiện tại / lossyScale.x gốc (lúc Awake)
-        /// Ví dụ: 300 → 600 thì multiple = 2
-        ///   rotZ: 25° * 2 = 50°
-        ///   rotZ: -25° * 2 = -50°
-        ///
-        /// Chỉ thay đổi rotation Z, không đụng bất kỳ thứ gì khác.
+        /// Gọi từ LockObstacleController để khóa hoặc mở tray.
         /// </summary>
+        public void SetLocked(bool locked)
+        {
+            IsLocked = locked;
+        }
+
+        // ─── Public: Collider Fix ─────────────────────────────────────────────
+
         public void RefixColliders()
         {
             if (_childColliders == null || _childColliders.Length == 0) return;
-
-            // Tránh chia cho 0
             if (Mathf.Approximately(_originalLossyScaleX, 0f)) return;
 
-            // Multiple thực tế = scale hiện tại / scale gốc lúc Awake
             float scaleXMultiple = transform.lossyScale.x / _originalLossyScaleX;
 
             for (int i = 0; i < _childColliders.Length; i++)
@@ -130,7 +121,6 @@ namespace FoodMatch.Tray
                 Transform t = col.transform;
                 Vector3 euler = t.localEulerAngles;
 
-                // Chỉ nhân Z, giữ nguyên X và Y
                 t.localEulerAngles = new Vector3(
                     euler.x,
                     euler.y,
@@ -181,8 +171,18 @@ namespace FoodMatch.Tray
             }
         }
 
+        /// <summary>
+        /// Cố gắng lấy food ra khỏi tray.
+        /// Nếu tray đang bị khóa → bounce và từ chối.
+        /// </summary>
         public FoodItem TryPopItem(FoodItem item)
         {
+            if (IsLocked)
+            {
+                item.PlayLockedBounce();
+                return null;
+            }
+
             if (!_stacks[0].Contains(item))
             {
                 item.PlayLockedBounce();

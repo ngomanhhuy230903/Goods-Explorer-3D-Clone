@@ -13,7 +13,9 @@ namespace FoodMatch.Obstacle
         // ─── Inspector ────────────────────────────────────────────────────────
         [Header("─── Lock View ────────────────────────")]
         [SerializeField] private LockTrayView lockViewPrefab;
-        [SerializeField] private Vector3 lockViewLocalOffset = new Vector3(0f, 1.5f, -0.1f);
+
+        [Tooltip("Offset world so với vị trí FoodTray (dùng để đặt icon phía trên tray).")]
+        [SerializeField] private Vector3 worldOffset = new Vector3(0f, 0.3f, -0.1f);
 
         // ─── Runtime ──────────────────────────────────────────────────────────
 
@@ -54,9 +56,12 @@ namespace FoodMatch.Obstacle
 
             foreach (var kv in _lockedTrays)
             {
-                if (kv.Value == null) continue;
-                kv.Value.HideImmediate();
-                Destroy(kv.Value.gameObject);
+                kv.Key?.SetLocked(false);
+                if (kv.Value != null)
+                {
+                    kv.Value.StopFollowing();
+                    Object.Destroy(kv.Value.gameObject);
+                }
             }
 
             _lockedTrays.Clear();
@@ -73,10 +78,18 @@ namespace FoodMatch.Obstacle
 
             if (_pendingData == null) return;
 
+            // Container ngang hàng với food — không bị ảnh hưởng bởi FoodTray scale
+            Transform container = _gridSpawner.GetNeutralContainer();
+            if (container == null)
+            {
+                Debug.LogWarning("[LockObstacle] NeutralContainer null, dùng gridSpawner transform.");
+                container = _gridSpawner.transform;
+            }
+
             var allTrays = GetAllTrays();
             if (allTrays.Count == 0)
             {
-                Debug.LogWarning("[LockObstacle] OnGridAndFoodReady: không tìm thấy FoodTray!");
+                Debug.LogWarning("[LockObstacle] Không tìm thấy FoodTray nào!");
                 return;
             }
 
@@ -88,13 +101,22 @@ namespace FoodMatch.Obstacle
                 FoodTray tray = allTrays[i];
                 int hp = _pendingData.GetHpForTray(i);
 
-                LockTrayView view = SpawnLockView(tray);
+                tray.SetLocked(true);
+
+                // Lấy anchor Slot 1-2 (layer0, index 1) làm điểm spawn
+                // Fallback: index 0 nếu không có index 1, fallback tiếp: tray.transform
+                var layer0 = tray.GetLayer0Anchors();
+                Transform anchorTarget = layer0.Count > 1 ? layer0[1]
+                                       : layer0.Count > 0 ? layer0[0]
+                                       : tray.transform;
+
+                LockTrayView view = SpawnLockView(anchorTarget, container);
                 view.Setup(hp);
 
                 _lockedTrays[tray] = view;
                 _stillLocked.Add(tray);
 
-                Debug.Log($"[LockObstacle] Tray[{tray.TrayID}] bị khóa — HP={hp}");
+                Debug.Log($"[LockObstacle] Tray[{tray.TrayID}] bị khóa — HP={hp} | anchor={anchorTarget.name}");
             }
 
             _pendingData = null;
@@ -102,7 +124,7 @@ namespace FoodMatch.Obstacle
             Debug.Log($"[LockObstacle] Init xong — {countToLock}/{allTrays.Count} trays bị khóa.");
         }
 
-        // ─── Event Handler ────────────────────────────────────────────────────
+        // ─── Order Event ──────────────────────────────────────────────────────
 
         private void HandleOrderCompleted(int _)
         {
@@ -125,6 +147,7 @@ namespace FoodMatch.Obstacle
 
         private void UnlockTray(FoodTray tray)
         {
+            tray.SetLocked(false);
             _stillLocked.Remove(tray);
             Debug.Log($"[LockObstacle] Tray[{tray.TrayID}] đã mở khóa! " +
                       $"Còn {_stillLocked.Count} tray bị khóa.");
@@ -132,40 +155,32 @@ namespace FoodMatch.Obstacle
                 Debug.Log("[LockObstacle] Tất cả trays đã được mở khóa!");
         }
 
-        private LockTrayView SpawnLockView(FoodTray tray)
+        /// <summary>
+        /// Spawn LockView vào neutralContainer (KHÔNG phải child của FoodTray).
+        /// Scale giữ nguyên 100% như prefab gốc — không bị ảnh hưởng bởi FoodTray hierarchy.
+        /// Follow theo anchor (Slot 1-2 của layer0) để bám đúng vị trí khi tray xoay.
+        /// </summary>
+        private LockTrayView SpawnLockView(Transform anchor, Transform container)
         {
             LockTrayView view;
 
+            Vector3 spawnPos = anchor.position + worldOffset;
+
             if (lockViewPrefab != null)
             {
-                // Spawn KHÔNG worldPositionStays để sau đó ta tự tính scale
-                view = Instantiate(lockViewPrefab, tray.transform);
+                view = Object.Instantiate(lockViewPrefab, spawnPos, Quaternion.identity, container);
             }
             else
             {
                 var go = new GameObject("LockView");
-                go.transform.SetParent(tray.transform, worldPositionStays: false);
+                go.transform.SetParent(container, false);
+                go.transform.position = spawnPos;
                 view = go.AddComponent<LockTrayView>();
                 Debug.LogWarning("[LockObstacle] lockViewPrefab chưa gán — dùng fallback.");
             }
 
-            view.transform.localPosition = lockViewLocalOffset;
-
-            // ── Giữ nguyên world scale của prefab ─────────────────────────────
-            // Sau Instantiate(prefab, parent) localScale bị nhân với parent lossyScale.
-            // Ta tính ngược: localScale = prefabWorldScale / parent.lossyScale
-            if (lockViewPrefab != null)
-            {
-                Vector3 prefabWorldScale = lockViewPrefab.transform.lossyScale;
-                Vector3 parentLossy = tray.transform.lossyScale;
-
-                view.transform.localScale = new Vector3(
-                    Mathf.Approximately(parentLossy.x, 0f) ? 1f : prefabWorldScale.x / parentLossy.x,
-                    Mathf.Approximately(parentLossy.y, 0f) ? 1f : prefabWorldScale.y / parentLossy.y,
-                    Mathf.Approximately(parentLossy.z, 0f) ? 1f : prefabWorldScale.z / parentLossy.z
-                );
-            }
-
+            // Follow anchor (Slot 1-2) — bám theo đúng slot khi grid xoay
+            view.Follow(anchor, worldOffset);
             return view;
         }
 

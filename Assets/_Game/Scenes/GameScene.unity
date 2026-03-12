@@ -311,6 +311,53 @@ MonoBehaviour:
   spawnUnlockedOnly: 0
   staggerDelay: 0.06
   scaleInDuration: 0.25
+--- !u!1 &41090281
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 41090283}
+  - component: {fileID: 41090282}
+  m_Layer: 0
+  m_Name: LockObstacle
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &41090282
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 41090281}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5401e3c09673bde4a901e6676b8877d0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  lockViewPrefab: {fileID: 6833735175151441038, guid: 8b2f37ca903be6743af116d55943b89e,
+    type: 3}
+  lockViewLocalOffset: {x: -0.0227, y: 0.39, z: -0.03}
+--- !u!4 &41090283
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 41090281}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1458917227}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &41309207
 GameObject:
   m_ObjectHideFlags: 0
@@ -1104,6 +1151,50 @@ MonoBehaviour:
   levelText: {fileID: 427768228}
   displayType: 1
   prefix: 'Level '
+--- !u!1 &492540282
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 492540284}
+  - component: {fileID: 492540283}
+  m_Layer: 0
+  m_Name: 'TubeObstacle      '
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &492540283
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 492540282}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e3f1b4adfd870594fa59024ce69b588a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!4 &492540284
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 492540282}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1458917227}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &531939541
 GameObject:
   m_ObjectHideFlags: 0
@@ -1539,6 +1630,7 @@ MonoBehaviour:
   backupTraySpawner: {fileID: 1880608951}
   foodGridSpawner: {fileID: 186209384}
   foodTraySpawner: {fileID: 186209385}
+  obstacleManager: {fileID: 1458917226}
 --- !u!4 &798460672
 Transform:
   m_ObjectHideFlags: 0
@@ -3131,6 +3223,50 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1183881287}
   m_CullTransparentMesh: 1
+--- !u!1 &1214467517
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1214467519}
+  - component: {fileID: 1214467518}
+  m_Layer: 0
+  m_Name: 'ConveyorObstacle  '
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1214467518
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1214467517}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3b6bc1e913451714eb00c8270f22ebe7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!4 &1214467519
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1214467517}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1458917227}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &1257614268
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -3359,6 +3495,56 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1382145962}
   m_CullTransparentMesh: 1
+--- !u!1 &1458917225
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1458917227}
+  - component: {fileID: 1458917226}
+  m_Layer: 0
+  m_Name: ObstacleManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1458917226
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1458917225}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e52bb83b724d8c9498d8b7f9f710519e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  lockController: {fileID: 41090282}
+  tubeController: {fileID: 492540283}
+  conveyorController: {fileID: 1214467518}
+--- !u!4 &1458917227
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1458917225}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 464.97577, y: 873.47174, z: -87.04692}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 41090283}
+  - {fileID: 492540284}
+  - {fileID: 1214467519}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &1478998251 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 8691056075127400916, guid: 7023d50b6f6faa447b16afed6f071820,
@@ -4177,7 +4363,7 @@ PrefabInstance:
     - target: {fileID: 2620836623855320697, guid: 7023d50b6f6faa447b16afed6f071820,
         type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: -227.99997
+      value: -228
       objectReference: {fileID: 0}
     - target: {fileID: 2865128117228277285, guid: 7023d50b6f6faa447b16afed6f071820,
         type: 3}
@@ -4360,3 +4546,4 @@ SceneRoots:
   - {fileID: 186209383}
   - {fileID: 2132949661}
   - {fileID: 727428928}
+  - {fileID: 1458917227}

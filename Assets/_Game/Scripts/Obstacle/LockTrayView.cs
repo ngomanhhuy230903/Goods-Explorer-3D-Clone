@@ -4,6 +4,11 @@ using DG.Tweening;
 
 namespace FoodMatch.Obstacle
 {
+    /// <summary>
+    /// Hiển thị lock icon + HP cho FoodTray bị khóa.
+    /// Spawn vào neutralContainer (KHÔNG phải child của FoodTray) để tránh scale bị nhân.
+    /// Follow vị trí FoodTray qua Update() giống SlotFollower của FoodItem.
+    /// </summary>
     public class LockTrayView : MonoBehaviour
     {
         // ─── Inspector ────────────────────────────────────────────────────────
@@ -27,24 +32,45 @@ namespace FoodMatch.Obstacle
         public int CurrentHp { get; private set; }
         public bool IsLocked => CurrentHp > 0;
 
-        /// <summary>
-        /// localScale đã được tính đúng bởi LockObstacleController trước khi gọi Setup().
-        /// Cache lại để dùng làm base cho animation unlock (scale lên 1.4x rồi fade).
-        /// </summary>
+        private Transform _followTarget;
+        private Vector3 _followOffset;
+        private bool _isFollowing = false;
         private Vector3 _baseLocalScale;
 
         // ─────────────────────────────────────────────────────────────────────
 
+        private void Update()
+        {
+            if (!_isFollowing || _followTarget == null) return;
+            // Bám theo world position của FoodTray + offset
+            transform.position = _followTarget.position + _followOffset;
+        }
+
+        // ─── Public API ───────────────────────────────────────────────────────
+
+        /// <summary>Bắt đầu follow target (FoodTray.transform) với offset world.</summary>
+        public void Follow(Transform target, Vector3 worldOffset)
+        {
+            _followTarget = target;
+            _followOffset = worldOffset;
+            _isFollowing = true;
+        }
+
+        /// <summary>Dừng follow — gọi khi Reset.</summary>
+        public void StopFollowing()
+        {
+            _isFollowing = false;
+            _followTarget = null;
+        }
+
         /// <summary>
-        /// Gọi từ LockObstacleController SAU KHI đã set localScale đúng.
-        /// KHÔNG reset localScale ở đây — scale do controller quản lý.
+        /// Khởi tạo view với HP.
+        /// Gọi SAU khi đã Instantiate — scale đã đúng vì không phải child của FoodTray.
         /// </summary>
         public void Setup(int hp)
         {
             CurrentHp = hp;
-
-            // Cache scale tại thời điểm setup (đã được controller tính đúng)
-            _baseLocalScale = transform.localScale;
+            _baseLocalScale = transform.localScale; // cache scale gốc prefab
 
             if (lockIconRenderer != null)
             {
@@ -56,7 +82,7 @@ namespace FoodMatch.Obstacle
             RefreshHpText();
         }
 
-        /// <summary>Giảm 1 HP. Trả về true nếu vừa unlock (HP = 0).</summary>
+        /// <summary>Giảm 1 HP. Trả về true nếu vừa unlock.</summary>
         public bool TakeHit()
         {
             if (!IsLocked) return false;
@@ -74,9 +100,10 @@ namespace FoodMatch.Obstacle
             return false;
         }
 
-        /// <summary>Ẩn ngay lập tức khi Reset.</summary>
+        /// <summary>Ẩn và dừng follow ngay lập tức khi Reset.</summary>
         public void HideImmediate()
         {
+            StopFollowing();
             DOTween.Kill(transform);
             if (lockIconRenderer != null)
                 lockIconRenderer.gameObject.SetActive(false);
@@ -89,8 +116,8 @@ namespace FoodMatch.Obstacle
         private void PlayHitAnimation()
         {
             if (lockIconRenderer == null) return;
-
             DOTween.Kill(transform, complete: false);
+
             transform
                 .DOShakeRotation(hitShakeDuration,
                     new Vector3(0f, 0f, hitShakeStrength),
@@ -110,17 +137,17 @@ namespace FoodMatch.Obstacle
                 return;
             }
 
+            // Dừng follow để icon không nhảy lung tung lúc animate
+            StopFollowing();
             DOTween.Kill(transform, complete: false);
 
             if (unlockingSprite != null)
                 lockIconRenderer.sprite = unlockingSprite;
 
-            // Scale lên 1.4× từ _baseLocalScale (không hardcode Vector3.one)
-            Vector3 targetScale = _baseLocalScale * 1.4f;
-
+            // Scale lên 1.4× từ scale gốc rồi fade
             DOTween.Sequence()
                 .Append(transform
-                    .DOScale(targetScale, unlockScaleDuration)
+                    .DOScale(_baseLocalScale * 1.4f, unlockScaleDuration)
                     .SetEase(Ease.OutBack))
                 .Join(lockIconRenderer
                     .DOFade(0f, unlockFadeDuration)
