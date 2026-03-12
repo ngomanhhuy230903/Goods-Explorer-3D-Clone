@@ -127,7 +127,10 @@ namespace FoodMatch.Order
         private int _completedOrderCount;
         private bool _isInitialized;
 
-        public IReadOnlyList<FoodItemData> SharedFoodList { get; private set; }
+        // THÊM MỚI: backing field để TubeObstacle có thể RemoveAt
+        // SharedFoodList vẫn trả về IReadOnlyList — không thay đổi contract cũ
+        private List<FoodItemData> _canonicalFoodList = new();
+        public IReadOnlyList<FoodItemData> SharedFoodList => _canonicalFoodList;
 
         // ── IOrderTrayProvider ────────────────────────────────────────────────
         public IReadOnlyList<OrderTray> GetActiveTrays() => _activeTrays;
@@ -159,10 +162,11 @@ namespace FoodMatch.Order
             _completedOrderCount = 0;
             _maxActiveOrders = config.maxActiveOrders;
 
-            var canonicalList = BuildCanonicalFoodList(config);
-            SharedFoodList = canonicalList.AsReadOnly();
+            // THAY: dùng _canonicalFoodList thay vì local var
+            // SharedFoodList tự động reflect vì là property => _canonicalFoodList
+            _canonicalFoodList = BuildCanonicalFoodList(config);
 
-            var orders = GenerateOrdersFromList(canonicalList);
+            var orders = GenerateOrdersFromList(_canonicalFoodList);
             _totalOrderCount = orders.Count;
             foreach (var o in orders) _pendingOrders.Enqueue(o);
 
@@ -174,7 +178,7 @@ namespace FoodMatch.Order
             SlotReservationRegistry.Instance.ClearAll();
             FillActiveSlots();
 
-            Log($"Init: {_totalOrderCount} orders | {canonicalList.Count} foods | max={_maxActiveOrders}");
+            Log($"Init: {_totalOrderCount} orders | {_canonicalFoodList.Count} foods | max={_maxActiveOrders}");
         }
 
         public MatchResult TryMatchFood(int foodID)
@@ -212,8 +216,54 @@ namespace FoodMatch.Order
             SlotReservationRegistry.Instance.ClearAll();
             _completedOrderCount = 0;
             _isInitialized = false;
-            SharedFoodList = null;
+            // THAY: clear list thay vì set null — giữ reference hợp lệ
+            _canonicalFoodList.Clear();
         }
+
+        // ── THÊM MỚI ─────────────────────────────────────────────────────────
+        /// <summary>
+        /// Lấy ngẫu nhiên <paramref name="count"/> item ra khỏi _canonicalFoodList
+        /// để dành cho TubeObstacle. Gọi TRƯỚC khi FoodTraySpawner đọc SharedFoodList.
+        /// Không ảnh hưởng đến bất kỳ logic nào khác của OrderQueue.
+        /// </summary>
+        public List<FoodItemData> ConsumeFoodForTubes(int count)
+        {
+            var result = new List<FoodItemData>();
+            if (_canonicalFoodList == null || _canonicalFoodList.Count == 0)
+            {
+                Debug.LogError("[OrderQueue] ConsumeFoodForTubes: list rỗng!");
+                return result;
+            }
+
+            int actual = Mathf.Min(count, _canonicalFoodList.Count);
+            if (actual < count)
+                Debug.LogWarning(
+                    $"[OrderQueue] ConsumeFoodForTubes: yêu cầu {count} " +
+                    $"nhưng chỉ có {_canonicalFoodList.Count} → lấy {actual}.");
+
+            // Shuffle toàn bộ indices rồi lấy `actual` cái đầu
+            var allIdx = new List<int>(_canonicalFoodList.Count);
+            for (int i = 0; i < _canonicalFoodList.Count; i++) allIdx.Add(i);
+            for (int i = allIdx.Count - 1; i > 0; i--)
+            {
+                int j = UnityEngine.Random.Range(0, i + 1);
+                (allIdx[i], allIdx[j]) = (allIdx[j], allIdx[i]);
+            }
+
+            // Sort giảm dần để RemoveAt không lệch index
+            var toRemove = allIdx.GetRange(0, actual);
+            toRemove.Sort((a, b) => b.CompareTo(a));
+
+            foreach (int idx in toRemove)
+            {
+                result.Add(_canonicalFoodList[idx]);
+                _canonicalFoodList.RemoveAt(idx);
+            }
+
+            Log($"ConsumeFoodForTubes: lấy {result.Count}, còn lại {_canonicalFoodList.Count} cho tray.");
+            return result;
+        }
+        // ─────────────────────────────────────────────────────────────────────
 
         // ═════════════════════════════════════════════════════════════════════
         //  FOOD LIST GENERATION
@@ -308,7 +358,6 @@ namespace FoodMatch.Order
 
             _slotRegistry.OccupySlot(slotIdx, tray);
 
-            // ── FIX: Unsubscribe trước để tránh double subscription khi tray từ pool ──
             SubscribeTray(tray);
 
             _activeTrays.Add(tray);

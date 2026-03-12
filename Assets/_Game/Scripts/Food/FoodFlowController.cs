@@ -8,6 +8,7 @@ using FoodMatch.Data;
 using FoodMatch.Tray;
 using FoodMatch.Order;
 using FoodMatch.Flow;
+using FoodMatch.Obstacle;
 
 namespace FoodMatch.Food
 {
@@ -41,7 +42,7 @@ namespace FoodMatch.Food
         [Header("─── VFX ─────────────────────────────")]
         [SerializeField] private GameObject sparkleVFXPrefab;
         [Header("─── Buffer ───────────────────────────")]
-        [SerializeField] private FoodMatch.Tray.FoodBuffer _foodBuffer;
+        [SerializeField] private FoodBuffer _foodBuffer;
 
         // ─── Runtime Dependencies ─────────────────────────────────────────────
         private OrderQueue _orderQueue;
@@ -49,7 +50,7 @@ namespace FoodMatch.Food
         private bool _isReady = false;
         private bool _isAutoMatching = false;
 
-        // ─── Strategies (khởi tạo theo usePremiumFlyEffect) ───────────────────
+        // ─── Strategies ───────────────────────────────────────────────────────
         private IFlyStrategy _orderFlyStrategy;
         private IFlyStrategy _backupFlyStrategy;
 
@@ -104,7 +105,7 @@ namespace FoodMatch.Food
         // ─────────────────────────────────────────────────────────────────────
         #region Public API
 
-        /// <summary>Gọi bởi FoodInteractionHandler khi player tap vào food.</summary>
+        /// <summary>Gọi bởi FoodInteractionHandler khi player tap vào food trên FoodTray.</summary>
         public void HandleFoodTapped(FoodItem foodItem, Action onComplete = null)
         {
             if (!_isReady)
@@ -120,7 +121,7 @@ namespace FoodMatch.Food
                 return;
             }
 
-            // Food trong BackupTray (ownerTray == null)
+            // Food trong BackupTray (ownerTray == null, không phải tube)
             if (foodItem.OwnerTray == null)
             {
                 HandleBackupFoodTapped(foodItem, onComplete);
@@ -131,24 +132,78 @@ namespace FoodMatch.Food
             FoodItem poppedItem = foodItem.OwnerTray.TryPopItem(foodItem);
             if (poppedItem == null) { onComplete?.Invoke(); return; }
 
-            // Tạo và execute command pipeline
             BuildAndExecuteDeliveryCommand(poppedItem, onComplete);
+        }
+
+        /// <summary>
+        /// Gọi bởi FoodTube.OnPointerClick() khi player tap vào ống.
+        /// Flow giống BackupTray food — match order hoặc vào backup.
+        /// Sau khi delivery hoàn tất (thành công hay thất bại), gọi tube.TakeHead()
+        /// để dequeue item tiếp theo.
+        /// </summary>
+        public void HandleTubeFoodTapped(FoodItem foodItem, FoodTube sourceTube, Action onComplete = null)
+        {
+            if (!_isReady)
+            {
+                Debug.LogError("[FoodFlowController] Chưa Inject!");
+                onComplete?.Invoke();
+                return;
+            }
+
+            if (foodItem == null || foodItem.Data == null || sourceTube == null)
+            {
+                onComplete?.Invoke();
+                return;
+            }
+
+            int instanceId = foodItem.GetInstanceID();
+
+            // Thử match vào OrderTray trước
+            var matchResult = _orderQueue.TryMatchFoodWithReservation(
+                foodItem.Data.foodID, instanceId);
+
+            if (matchResult.IsMatch)
+            {
+                // TakeHead ngay sau khi reserve thành công:
+                // - Xóa reference head khỏi tube (DestroyHead + spawn item tiếp theo)
+                // - Food object vẫn tồn tại vì ExecuteOrderCommand giữ reference qua cmd.Food
+                // - Mỗi tube độc lập — TakeHead() của tube này không ảnh hưởng tube khác
+                sourceTube.TakeHead();
+
+                var cmd = new OrderDeliveryCommand(foodItem, matchResult.Tray, matchResult.SlotIndex);
+                ExecuteOrderCommand(cmd, onComplete);
+            }
+            else
+            {
+                // Thử vào BackupTray
+                int backupSlot = _backupTray.TryReserveNextSlot(instanceId);
+                if (backupSlot < 0)
+                {
+                    Debug.Log("[FoodFlowController] BackupTray đầy → THUA!");
+                    EventBus.RaiseBackupFull();
+                    // Không TakeHead — food vẫn ở ống, player thấy bounce feedback
+                    foodItem.PlayLockedBounce();
+                    onComplete?.Invoke();
+                    return;
+                }
+
+                // Reserve backup thành công → TakeHead, food bay vào backup
+                sourceTube.TakeHead();
+
+                var cmd = new BackupDeliveryCommand(foodItem, backupSlot);
+                ExecuteBackupCommand(cmd, onComplete);
+            }
         }
 
         #endregion
 
         // ─────────────────────────────────────────────────────────────────────
-        #region Command Pipeline (Factory + Command Pattern)
+        #region Command Pipeline
 
-        /// <summary>
-        /// CORE LOGIC: Match → Reserve slot ngay → Tạo Command → Execute.
-        /// Reservation xảy ra synchronously trước animation → tránh race condition.
-        /// </summary>
         private void BuildAndExecuteDeliveryCommand(FoodItem food, Action onComplete)
         {
             int instanceId = food.GetInstanceID();
 
-            // 1. Thử match vào OrderTray (kèm reserve slot ngay lập tức)
             var matchResult = _orderQueue.TryMatchFoodWithReservation(food.Data.foodID, instanceId);
 
             if (matchResult.IsMatch)
@@ -158,7 +213,6 @@ namespace FoodMatch.Food
             }
             else
             {
-                // 2b. Thử reserve slot trong BackupTray
                 int backupSlot = _backupTray.TryReserveNextSlot(instanceId);
 
                 if (backupSlot < 0)
@@ -175,17 +229,14 @@ namespace FoodMatch.Food
             }
         }
 
-        // ─── Execute Order Command ─────────────────────────────────────────────
-
         private void ExecuteOrderCommand(OrderDeliveryCommand cmd, Action onComplete)
         {
-            cmd.Execute(null); // mark Executing
+            cmd.Execute(null);
 
             var food = cmd.Food;
             var orderTray = cmd.TargetTray;
             int slotIndex = cmd.SlotIndex;
 
-            // Validate tray còn Active không
             if (orderTray == null || orderTray.CurrentStateId != OrderTrayStateId.Active)
             {
                 cmd.Cancel();
@@ -197,12 +248,7 @@ namespace FoodMatch.Food
             Vector3 targetScale = prefabScale * orderSlotScaleMultiplier;
             Vector3 targetPos = orderTray.GetSlotWorldPosition(slotIndex);
 
-            // ─── [FIX] PreConfirmDelivery NGAY TRƯỚC KHI BAY ────────────────
-            // Đánh dấu slot là đã delivered về mặt logic (OrderData.DeliveredCount++).
-            // Food thứ 2 cùng type bay đồng thời sẽ thấy DeliveredCount đã tăng
-            // → TryMatchAndReserve sẽ cấp slot TIẾP THEO thay vì trùng slot này.
             orderTray.PreConfirmDelivery(slotIndex);
-            // ────────────────────────────────────────────────────────────────
 
             var orderConfig = new FlyConfig
             {
@@ -215,7 +261,6 @@ namespace FoodMatch.Food
 
             _orderFlyStrategy.Execute(food, targetPos, targetScale, orderConfig, () =>
             {
-                // Re-validate: tray vẫn phải tồn tại (không bị despawn giữa chừng)
                 if (orderTray == null)
                 {
                     cmd.MarkFailed();
@@ -225,12 +270,8 @@ namespace FoodMatch.Food
                 }
 
                 SpawnSparkleVFX(targetPos);
-
-                // [FIX] Chỉ chạy VISUAL (animation slot icon, transition Completed nếu đủ)
-                // Logic đã được confirm ở PreConfirmDelivery phía trên.
                 orderTray.FinalizeDeliveryVisual(slotIndex);
-
-                cmd.MarkCompleted(); // release reservation
+                cmd.MarkCompleted();
 
                 DOVirtual.DelayedCall(0.35f,
                     () => PoolManager.Instance.ReturnFood(food.FoodID, food.gameObject),
@@ -240,11 +281,9 @@ namespace FoodMatch.Food
             });
         }
 
-        // ─── Execute Backup Command ────────────────────────────────────────────
-
         private void ExecuteBackupCommand(BackupDeliveryCommand cmd, Action onComplete)
         {
-            cmd.Execute(null); // mark Executing
+            cmd.Execute(null);
 
             var food = cmd.Food;
             int slotIndex = cmd.SlotIndex;
@@ -267,7 +306,6 @@ namespace FoodMatch.Food
                 _backupTray.ReceiveFood(food, slotIndex);
                 cmd.MarkCompleted();
                 EventBus.RaiseFoodToBackup(food.Data);
-
                 onComplete?.Invoke();
             });
         }
@@ -275,12 +313,8 @@ namespace FoodMatch.Food
         #endregion
 
         // ─────────────────────────────────────────────────────────────────────
-        #region Auto-Match: BackupTray → OrderTray (Observer response)
+        #region Auto-Match: BackupTray → OrderTray
 
-        /// <summary>
-        /// Observer callback khi OrderQueue kích hoạt order mới.
-        /// Scan BackupTray tìm matching food và auto-fly lên OrderTray.
-        /// </summary>
         private void HandleNewOrderActive(int newOrderFoodID)
         {
             if (!_isReady || _backupTray == null || _orderQueue == null) return;
@@ -288,7 +322,6 @@ namespace FoodMatch.Food
             var allBackupFoods = _backupTray.GetAllFoods();
             if (allBackupFoods == null || allBackupFoods.Count == 0) return;
 
-            // Build command queue: reserve slot NGAY cho từng food match được
             var commandQueue = new Queue<OrderDeliveryCommand>();
 
             foreach (var food in allBackupFoods)
@@ -305,7 +338,6 @@ namespace FoodMatch.Food
             }
 
             if (commandQueue.Count == 0) return;
-
             StartCoroutine(AutoMatchCoroutine(commandQueue));
         }
 
@@ -317,32 +349,15 @@ namespace FoodMatch.Food
             {
                 var cmd = commandQueue.Dequeue();
 
-                if (cmd.Food == null || cmd.Food.Data == null)
-                {
-                    cmd.Cancel();
-                    continue;
-                }
+                if (cmd.Food == null || cmd.Food.Data == null) { cmd.Cancel(); continue; }
 
                 if (cmd.TargetTray == null ||
                     cmd.TargetTray.CurrentStateId != OrderTrayStateId.Active)
-                {
-                    cmd.Cancel();
-                    continue;
-                }
+                { cmd.Cancel(); continue; }
 
-                // Remove khỏi BackupTray trước khi bay
-                if (!_backupTray.TryRemoveFood(cmd.Food))
-                {
-                    cmd.Cancel();
-                    continue;
-                }
+                if (!_backupTray.TryRemoveFood(cmd.Food)) { cmd.Cancel(); continue; }
 
-                // [FIX] Không cần WaitUntil(done) nữa vì PreConfirmDelivery
-                // đánh dấu slot ngay lập tức trong ExecuteOrderCommand.
-                // Các food bay song song sẽ nhận slot khác nhau nhờ reservation.
-                // Chỉ cần stagger delay để animation không chồng chéo nhau.
                 ExecuteOrderCommand(cmd, null);
-
                 yield return new WaitForSeconds(autoMatchStaggerDelay);
             }
 
@@ -352,7 +367,7 @@ namespace FoodMatch.Food
         #endregion
 
         // ─────────────────────────────────────────────────────────────────────
-        #region Backup Food Tap (Player chủ động tap food trong BackupTray)
+        #region Backup Food Tap
 
         private void HandleBackupFoodTapped(FoodItem food, Action onComplete)
         {
@@ -387,7 +402,6 @@ namespace FoodMatch.Food
                 StartCoroutine(ReturnVFXAfterDelay(pooled, 1.5f));
                 return;
             }
-
             if (sparkleVFXPrefab != null)
                 Destroy(Instantiate(sparkleVFXPrefab, worldPos, Quaternion.identity), 2f);
         }
@@ -406,7 +420,6 @@ namespace FoodMatch.Food
         {
             if (!_isReady || _foodBuffer == null || _orderQueue == null) return;
             if (!_foodBuffer.HasFoodOfType(foodID)) return;
-
             StartCoroutine(SendBufferFoodCoroutine(foodID));
         }
 
@@ -431,10 +444,7 @@ namespace FoodMatch.Food
                 }
 
                 var cmd = new OrderDeliveryCommand(food, matchResult.Tray, matchResult.SlotIndex);
-
-                // [FIX] Tương tự AutoMatchCoroutine — không wait animation xong
                 ExecuteOrderCommand(cmd, null);
-
                 yield return new WaitForSeconds(autoMatchStaggerDelay);
             }
         }

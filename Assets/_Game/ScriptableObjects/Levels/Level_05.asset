@@ -26,8 +26,16 @@ MonoBehaviour:
   maxActiveOrders: 2
   backupTrayCapacity: 5
   timeLimitSeconds: 0
-  obstacles: []
+  obstacles:
+  - rid: 8191575206481887272
   obstaclePreset: {fileID: 0}
   references:
     version: 2
-    RefIds: []
+    RefIds:
+    - rid: 8191575206481887272
+      type: {class: TubeObstacleData, ns: FoodMatch.Data, asm: Assembly-CSharp}
+      data:
+        isEnabled: 1
+        tubeCount: 4
+        defaultFoodPerTube: 4
+        perTubeFoodCount: 

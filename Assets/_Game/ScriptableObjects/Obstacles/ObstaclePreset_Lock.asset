@@ -22,6 +22,6 @@ MonoBehaviour:
       type: {class: LockObstacleData, ns: FoodMatch.Data, asm: Assembly-CSharp}
       data:
         isEnabled: 1
-        lockedTrayCount: 2
-        defaultLockHp: 3
-        perTrayHpOverride: 
+        lockedTrayCount: 4
+        defaultLockHp: 1
+        perTrayHpOverride: 01000000010000000100000001000000

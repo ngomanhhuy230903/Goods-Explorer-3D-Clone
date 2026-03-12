@@ -237,7 +237,7 @@ namespace FoodMatch.Editor
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.LabelField("🧪 Tube Settings", EditorStyles.boldLabel);
-            _tubeCount = EditorGUILayout.IntSlider("tubeCount", _tubeCount, 1, 10);
+            _tubeCount = EditorGUILayout.IntSlider("tubeCount", _tubeCount, 1, 4);
             _tubeFoodDefault = EditorGUILayout.IntSlider("defaultFoodPerTube", _tubeFoodDefault, 1, 20);
 
             _useTubeFoodOverride = EditorGUILayout.Toggle(

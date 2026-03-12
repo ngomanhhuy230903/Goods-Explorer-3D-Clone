@@ -16,11 +16,11 @@ namespace FoodMatch.Data
 
         [Header("Tube Settings")]
         [Tooltip("Số ống spawn trong level.")]
-        [Min(1)]
+        [Range(1, 4)]
         public int tubeCount = 2;
 
         [Tooltip("Số food mặc định trong mỗi ống.")]
-        [Min(1)]
+        [Range(1, 10)]
         public int defaultFoodPerTube = 4;
 
         [Tooltip("Override số food cho từng ống theo index. Để trống = dùng default.")]

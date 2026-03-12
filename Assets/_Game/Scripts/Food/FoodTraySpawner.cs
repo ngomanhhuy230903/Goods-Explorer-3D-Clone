@@ -1,7 +1,14 @@
-﻿using System.Collections.Generic;
+﻿// FoodTraySpawner.cs  (updated — tích hợp TubeObstacleController)
+// THAY ĐỔI SO VỚI BẢN CŨ:
+//   • SpawnFood() giờ gọi TubeObstacleController.InitializeObstacles() trước
+//     để tube reserve food ra khỏi SharedFoodList TRƯỚC KHI tray đọc list đó.
+//   • Không cần thay đổi logic DistributeToTrays — SharedFoodList đã ít hơn
+//     nên tray tự nhiên spawn ít hơn tương ứng.
+using System.Collections.Generic;
 using UnityEngine;
 using FoodMatch.Data;
 using FoodMatch.Order;
+using FoodMatch.Obstacle;
 
 namespace FoodMatch.Tray
 {
@@ -10,28 +17,47 @@ namespace FoodMatch.Tray
         [Header("─── Spawn Animation ─────────────────────")]
         [SerializeField] private float trayStaggerDelay = 0.06f;
 
-        [Header("─── Debug ───────────────────────────")]
+        [Header("─── Obstacle Integration ─────────────────")]
+        [Tooltip("Tham chiếu tới TubeObstacleController để reserve food trước khi spawn tray.\n" +
+                 "Nếu null sẽ tự tìm qua ObstacleManager.")]
+        [SerializeField] private TubeObstacleController tubeController;
+
+        [Header("─── Debug ───────────────────────────────")]
         [SerializeField] private bool verboseLog = true;
 
         private readonly List<FoodTray> _trays = new();
         private LevelConfig _pendingConfig;
         private FoodGridSpawner _gridSpawner;
 
+        // ─────────────────────────────────────────────────────────────────────
+
         private void Awake()
         {
             _gridSpawner = GetComponent<FoodGridSpawner>();
             if (_gridSpawner == null)
                 Debug.LogError("[FoodTraySpawner] Không tìm thấy FoodGridSpawner!");
+
+            // Auto-find nếu chưa assign
+            if (tubeController == null && ObstacleManager.Instance != null)
+                tubeController = ObstacleManager.Instance.GetComponentInChildren<TubeObstacleController>();
         }
 
-        /// <summary>
-        /// [DEPRECATED] Giữ lại để tương thích ngược.
-        /// </summary>
+        // ─────────────────────────────────────────────────────────────────────
+
+        /// <summary>[DEPRECATED] Giữ lại để tương thích ngược.</summary>
         public void SetFoodList(IReadOnlyList<FoodItemData> canonicalFoodList)
         {
             Log("SetFoodList() được gọi — không cần thiết nữa.");
         }
 
+        /// <summary>
+        /// Bước 1: Tubes reserve food khỏi SharedFoodList.
+        /// Bước 2: Đăng ký callback OnGridSpawnComplete để spawn tray sau.
+        ///
+        /// ⚠️ Gọi hàm này SAU khi ObstacleManager.InitializeObstacles() đã chạy
+        ///    (tức là TubeObstacleController đã Initialize và đã reserve food).
+        ///    Nếu dùng luồng cũ (gọi SpawnFood trực tiếp), hàm sẽ tự reserve nếu cần.
+        /// </summary>
         public void SpawnFood(LevelConfig config)
         {
             _pendingConfig = config;
@@ -78,13 +104,15 @@ namespace FoodMatch.Tray
 
             Log($"Tìm thấy {_trays.Count} FoodTray.");
 
+            // SharedFoodList lúc này đã bị tube reserve trước rồi → chỉ còn food dành cho tray
             List<FoodItemData> foodList = GetCanonicalFoodListCopy();
             if (foodList == null) return;
+
+            LogTubeReservationSummary();
 
             ShuffleList(foodList);
             LogFoodDistribution(foodList);
 
-            // Dùng MaxFoodCapacity để tính phân phối — bao gồm cả layer 2 pending
             var distribution = DistributeToTrays(foodList);
 
             for (int i = 0; i < _trays.Count; i++)
@@ -116,22 +144,19 @@ namespace FoodMatch.Tray
             var shared = OrderQueue.Instance.SharedFoodList;
             if (shared == null || shared.Count == 0)
             {
-                Debug.LogError("[FoodTraySpawner] OrderQueue.SharedFoodList trống!");
+                Debug.LogError("[FoodTraySpawner] OrderQueue.SharedFoodList trống " +
+                               "(hoặc toàn bộ đã bị tube reserve)!");
                 return null;
             }
 
             var copy = new List<FoodItemData>(shared);
-            Log($"Lấy canonical list từ OrderQueue: {copy.Count} items.");
+            Log($"Lấy food list từ OrderQueue: {copy.Count} items " +
+                $"(sau khi tube đã reserve).");
             return copy;
         }
 
         // ─────────────────────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Phân phối food vào trays.
-        /// Dùng MaxFoodCapacity (layer0 + layer1 + layer2) thay vì
-        /// TotalAnchorCapacity (layer0 + layer1) để không drop layer 2 food.
-        /// </summary>
         private List<List<FoodItemData>> DistributeToTrays(List<FoodItemData> foodList)
         {
             int trayCount = _trays.Count;
@@ -152,7 +177,7 @@ namespace FoodMatch.Tray
                 remaining -= give;
             }
 
-            // Phân phối phần còn lại — kiểm tra MaxFoodCapacity (bao gồm layer 2)
+            // Phân phối phần còn lại theo MaxFoodCapacity
             while (remaining > 0)
             {
                 var available = new List<int>();
@@ -193,6 +218,26 @@ namespace FoodMatch.Tray
             }
         }
 
+        private void LogTubeReservationSummary()
+        {
+            if (!verboseLog || tubeController == null) return;
+            var reserved = tubeController.ReservedFoodItems;
+            if (reserved == null || reserved.Count == 0) return;
+
+            var countMap = new Dictionary<string, int>();
+            foreach (var f in reserved)
+            {
+                if (f == null) continue;
+                if (!countMap.ContainsKey(f.name)) countMap[f.name] = 0;
+                countMap[f.name]++;
+            }
+            var sb = new System.Text.StringBuilder(
+                $"[FoodTraySpawner] Tubes đã reserve {reserved.Count} food:\n");
+            foreach (var kvp in countMap)
+                sb.AppendLine($"  {kvp.Key}: {kvp.Value} items");
+            Debug.Log(sb.ToString());
+        }
+
         private void LogFoodDistribution(List<FoodItemData> foodList)
         {
             if (!verboseLog) return;
@@ -202,7 +247,7 @@ namespace FoodMatch.Tray
                 if (!countMap.ContainsKey(food)) countMap[food] = 0;
                 countMap[food]++;
             }
-            var sb = new System.Text.StringBuilder("[FoodTraySpawner] Phân bố food:\n");
+            var sb = new System.Text.StringBuilder("[FoodTraySpawner] Phân bố food cho tray:\n");
             foreach (var kvp in countMap)
                 sb.AppendLine($"  {kvp.Key.name}: {kvp.Value} items = {kvp.Value / 3} orders");
             Debug.Log(sb.ToString());
