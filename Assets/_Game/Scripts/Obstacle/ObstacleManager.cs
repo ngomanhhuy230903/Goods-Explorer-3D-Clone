@@ -100,7 +100,7 @@ namespace FoodMatch.Obstacle
                 conveyorController.gameObject.SetActive(true);
                 conveyorController.Initialize(data);
                 Debug.Log($"[ObstacleManager] Conveyor Obstacle ON — " +
-                          $"food={data.foodCount}, speed={data.speed}");
+                          $"conveyors={data.conveyorCount}, foodPerConveyor={data.foodPerConveyor}, speed={data.speed}");
             }
             else
             {

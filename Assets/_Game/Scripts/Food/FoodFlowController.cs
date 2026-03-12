@@ -108,27 +108,19 @@ namespace FoodMatch.Food
         /// <summary>Gọi bởi FoodInteractionHandler khi player tap vào food trên FoodTray.</summary>
         public void HandleFoodTapped(FoodItem foodItem, Action onComplete = null)
         {
-            if (!_isReady)
-            {
-                Debug.LogError("[FoodFlowController] Chưa Inject!");
-                onComplete?.Invoke();
-                return;
-            }
+            if (!_isReady) { onComplete?.Invoke(); return; }
+            if (foodItem == null || foodItem.Data == null) { onComplete?.Invoke(); return; }
 
-            if (foodItem == null || foodItem.Data == null)
-            {
-                onComplete?.Invoke();
-                return;
-            }
-
-            // Food trong BackupTray (ownerTray == null, không phải tube)
+            // CASE: BackupTray food (OwnerTray == null)
             if (foodItem.OwnerTray == null)
             {
-                HandleBackupFoodTapped(foodItem, onComplete);
+                // Kiểm tra xem có phải ConveyorTray food đã được pop rồi không
+                // (conveyorOwner.OwnerConveyorTray đã null) → đi thẳng vào delivery
+                BuildAndExecuteDeliveryCommand(foodItem, onComplete);
                 return;
             }
 
-            // Pop food ra khỏi FoodTray trước
+            // CASE: FoodTray food — pop tại đây (một lần duy nhất)
             FoodItem poppedItem = foodItem.OwnerTray.TryPopItem(foodItem);
             if (poppedItem == null) { onComplete?.Invoke(); return; }
 

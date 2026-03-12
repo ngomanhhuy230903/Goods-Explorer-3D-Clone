@@ -1,13 +1,19 @@
-﻿using UnityEngine;
+﻿// FoodInteractionHandler.cs
+using UnityEngine;
 using UnityEngine.EventSystems;
 using DG.Tweening;
 using FoodMatch.Food;
 using FoodMatch.Tray;
+using FoodMatch.Obstacle;
 
 namespace FoodMatch.Food
 {
     /// <summary>
     /// Xử lý tap/click trên FoodItem.
+    /// Hoạt động cho cả FoodTray VÀ ConveyorTray:
+    ///   - FoodTray food: item.OwnerTray != null → FoodTray.TryPopItem()
+    ///   - ConveyorTray food: ConveyorFoodOwner component → ConveyorTray.TryPopItem()
+    ///   - BackupTray food: OwnerTray == null && không có ConveyorFoodOwner
     /// </summary>
     [RequireComponent(typeof(Collider))]
     public class FoodInteractionHandler : MonoBehaviour,
@@ -15,46 +21,34 @@ namespace FoodMatch.Food
                                           IPointerDownHandler,
                                           IPointerUpHandler
     {
-        // ─── Cache ────────────────────────────────────────────────────────────
         private FoodItem _foodItem;
         private bool _isProcessing = false;
         private Vector3 _originalScale;
 
-        // ─────────────────────────────────────────────────────────────────────
         private void Awake()
         {
             _foodItem = GetComponent<FoodItem>() ?? GetComponentInParent<FoodItem>();
             _originalScale = transform.localScale;
         }
 
-        // ─── Helper: thông báo tray dừng auto-rotate ──────────────────────────
         private void NotifyTrayInteraction()
         {
-            // Tìm FoodGridSpawner từ OwnerTray nếu có, hoặc tìm trong scene
             FoodGridSpawner spawner = null;
-
             if (_foodItem != null && _foodItem.OwnerTray != null)
                 spawner = _foodItem.OwnerTray.GetComponentInChildren<FoodGridSpawner>();
-
             if (spawner == null)
                 spawner = FindObjectOfType<FoodGridSpawner>();
-
             spawner?.NotifyInteraction();
         }
 
-        // ─── IPointerDownHandler — press feedback ─────────────────────────────
         public void OnPointerDown(PointerEventData eventData)
         {
             if (_isProcessing) return;
-
-            // Ngay khi chạm → dừng auto-rotate
             NotifyTrayInteraction();
-
             transform.DOKill();
             transform.DOScale(_originalScale * 0.88f, 0.08f).SetEase(Ease.OutQuad).SetUpdate(true);
         }
 
-        // ─── IPointerUpHandler — release mà không click (drag) ───────────────
         public void OnPointerUp(PointerEventData eventData)
         {
             if (_isProcessing) return;
@@ -62,40 +56,60 @@ namespace FoodMatch.Food
             transform.DOScale(_originalScale, 0.1f).SetEase(Ease.OutBack).SetUpdate(true);
         }
 
-        // ─── IPointerClickHandler — logic chính ──────────────────────────────
         public void OnPointerClick(PointerEventData eventData)
         {
-            // Restore scale trước
             transform.DOKill();
             transform.DOScale(_originalScale, 0.12f).SetEase(Ease.OutBack).SetUpdate(true);
-
             HandleTap();
         }
 
-        // ─── Core ─────────────────────────────────────────────────────────────
         private void HandleTap()
         {
             if (_isProcessing) return;
+            if (_foodItem == null) return;
+            if (FoodFlowController.Instance == null) return;
 
-            if (_foodItem == null)
-            {
-                Debug.LogWarning("[FoodInteractionHandler] _foodItem null!");
-                return;
-            }
-
-            if (FoodFlowController.Instance == null)
-            {
-                Debug.LogWarning("[FoodInteractionHandler] FoodFlowController.Instance null!");
-                return;
-            }
-
-            // Layer > 0: locked — chỉ bounce, không xử lý
             if (_foodItem.LayerIndex > 0)
             {
                 _foodItem.PlayLockedBounce();
                 return;
             }
 
+            // CASE 1: Food từ ConveyorTray
+            var conveyorOwner = GetComponent<ConveyorFoodOwner>()
+                             ?? GetComponentInParent<ConveyorFoodOwner>();
+
+            if (conveyorOwner != null && conveyorOwner.OwnerConveyorTray != null)
+            {
+                var conveyorTray = conveyorOwner.OwnerConveyorTray;
+                FoodItem popped = conveyorTray.TryPopItem(_foodItem);
+                if (popped == null) return;
+
+                // ✅ Clear TRƯỚC khi gọi HandleFoodTapped để OwnerTray == null
+                // → FoodFlowController sẽ gọi BuildAndExecuteDeliveryCommand trực tiếp
+                conveyorOwner.OwnerConveyorTray = null;
+
+                _isProcessing = true;
+                FoodFlowController.Instance.HandleFoodTapped(popped, () =>
+                {
+                    _isProcessing = false;
+                });
+                return;
+            }
+
+            // CASE 2: Food từ FoodTray
+            if (_foodItem.OwnerTray != null)
+            {
+                // ✅ KHÔNG pop ở đây — để HandleFoodTapped tự pop bên trong
+                _isProcessing = true;
+                FoodFlowController.Instance.HandleFoodTapped(_foodItem, () =>
+                {
+                    _isProcessing = false;
+                });
+                return;
+            }
+
+            // CASE 3: BackupTray food
             _isProcessing = true;
             FoodFlowController.Instance.HandleFoodTapped(_foodItem, () =>
             {

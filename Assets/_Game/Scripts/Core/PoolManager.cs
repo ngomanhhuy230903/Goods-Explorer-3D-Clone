@@ -27,24 +27,28 @@ namespace FoodMatch.Core
         [SerializeField] private GameObject orderPrefab;
         [SerializeField] private int orderPreloadCount = 5;
 
+        [Header("─── Conveyor Tray Pool ──────────────")]
+        [SerializeField] private GameObject conveyorTrayPrefab;
+        [SerializeField] private int conveyorTrayPreloadCount = 10;
+
         // ─── Internal dictionaries ───────────────────────────────────────────
-        // Key: foodID → Pool tương ứng
         private readonly Dictionary<int, ObjectPool> _foodPools
             = new Dictionary<int, ObjectPool>();
 
         private ObjectPool _sparklePool;
         private ObjectPool _checkmarkPool;
         private ObjectPool _orderPool;
+        private ObjectPool _conveyorTrayPool;
 
-        // Container transforms (giữ Hierarchy gọn gàng)
+        // Container transforms
         private Transform _foodContainer;
         private Transform _vfxContainer;
         private Transform _orderContainer;
+        private Transform _conveyorContainer;
 
         // ─────────────────────────────────────────────────────────────────────
         private void Awake()
         {
-            // Singleton setup
             if (Instance != null && Instance != this)
             {
                 Destroy(gameObject);
@@ -59,6 +63,7 @@ namespace FoodMatch.Core
             InitFoodPools();
             InitVFXPools();
             InitOrderPool();
+            InitConveyorTrayPool();
         }
 
         // ─── Init helpers ────────────────────────────────────────────────────
@@ -68,6 +73,7 @@ namespace FoodMatch.Core
             _foodContainer = CreateContainer("Pool_Foods");
             _vfxContainer = CreateContainer("Pool_VFX");
             _orderContainer = CreateContainer("Pool_Orders");
+            _conveyorContainer = CreateContainer("Pool_ConveyorTrays");
         }
 
         private Transform CreateContainer(string name)
@@ -117,6 +123,12 @@ namespace FoodMatch.Core
                 _orderPool = new ObjectPool(orderPrefab, _orderContainer, orderPreloadCount);
         }
 
+        private void InitConveyorTrayPool()
+        {
+            if (conveyorTrayPrefab != null)
+                _conveyorTrayPool = new ObjectPool(conveyorTrayPrefab, _conveyorContainer, conveyorTrayPreloadCount);
+        }
+
         // ─── Public API ──────────────────────────────────────────────────────
 
         /// <summary>Lấy 1 food GameObject từ pool theo foodID.</summary>
@@ -135,7 +147,7 @@ namespace FoodMatch.Core
             if (_foodPools.TryGetValue(foodID, out var pool))
                 pool.Return(obj);
             else
-                Destroy(obj); // Fallback an toàn
+                Destroy(obj);
         }
 
         public GameObject GetSparkle(Vector3 pos)
@@ -155,5 +167,25 @@ namespace FoodMatch.Core
 
         public void ReturnOrder(GameObject obj)
             => _orderPool?.Return(obj);
+
+        /// <summary>Lấy 1 ConveyorTray từ pool.</summary>
+        public GameObject GetConveyorTray()
+        {
+            if (_conveyorTrayPool != null)
+                return _conveyorTrayPool.Get(Vector3.zero);
+
+            // Fallback nếu pool chưa init (prefab chưa assign)
+            Debug.LogWarning("[PoolManager] ConveyorTray pool chưa được khởi tạo! Kiểm tra conveyorTrayPrefab.");
+            return null;
+        }
+
+        /// <summary>Trả 1 ConveyorTray về pool.</summary>
+        public void ReturnConveyorTray(GameObject obj)
+        {
+            if (_conveyorTrayPool != null)
+                _conveyorTrayPool.Return(obj);
+            else
+                Destroy(obj);
+        }
     }
 }

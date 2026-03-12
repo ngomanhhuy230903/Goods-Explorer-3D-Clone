@@ -50,6 +50,14 @@ namespace FoodMatch.Core
         /// <summary>Người chơi nhấn dùng nhưng quantity = 0 → gợi ý mua thêm.</summary>
         public static event Action<string> OnBoosterOutOfStock;
 
+        // ─── Conveyor Obstacle Events ─────────────────────────────────────────
+        /// <summary>
+        /// Raised khi player tap collect food từ băng chuyền.
+        /// Param: foodID của food vừa được collect.
+        /// GameController/FoodFlowController lắng nghe để xử lý tương tự food trên grid.
+        /// </summary>
+        public static event Action<int> OnConveyorFoodCollected;
+
         // ─── Raise Helpers ────────────────────────────────────────────────────
         public static void RaiseFoodSelected(FoodItemData food) => OnFoodSelected?.Invoke(food);
         public static void RaiseFoodMatched(FoodItemData food, int id) => OnFoodMatchedCustomer?.Invoke(food, id);
@@ -67,10 +75,10 @@ namespace FoodMatch.Core
         public static void RaiseGamePaused() => OnGamePaused?.Invoke();
         public static void RaiseGameResumed() => OnGameResumed?.Invoke();
         public static void RaiseBufferFoodReady(int foodID) => OnBufferFoodReady?.Invoke(foodID);
-
         public static void RaiseBoosterActivated(string name) => OnBoosterActivated?.Invoke(name);
         public static void RaiseBoosterUnlocked(string name) => OnBoosterUnlocked?.Invoke(name);
         public static void RaiseBoosterOutOfStock(string name) => OnBoosterOutOfStock?.Invoke(name);
+        public static void RaiseConveyorFoodCollected(int foodID) => OnConveyorFoodCollected?.Invoke(foodID);
 
         // ─── Cleanup ──────────────────────────────────────────────────────────
         public static void ClearAllEvents()
@@ -94,6 +102,7 @@ namespace FoodMatch.Core
             OnBoosterActivated = null;
             OnBoosterUnlocked = null;
             OnBoosterOutOfStock = null;
+            OnConveyorFoodCollected = null;
             Debug.Log("[EventBus] Tất cả events đã được dọn sạch.");
         }
     }

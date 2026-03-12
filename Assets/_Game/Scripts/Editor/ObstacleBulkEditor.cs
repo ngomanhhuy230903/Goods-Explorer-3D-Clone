@@ -300,7 +300,7 @@ namespace FoodMatch.Editor
                         {
                             var data = GetOrCreate<ConveyorObstacleData>(lvl);
                             data.isEnabled = _enableObstacle;
-                            data.foodCount = _conveyorFood;
+                            data.conveyorCount = _conveyorFood;
                             data.speed = _conveyorSpeed;
                             break;
                         }
