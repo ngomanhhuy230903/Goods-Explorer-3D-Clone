@@ -315,7 +315,13 @@ namespace FoodMatch.Order
             slots[slotIndex].PlayReceiveAnimation();
             slots[slotIndex].MarkDelivered();
 
-            if (OrderData.IsCompleted)
+            // FIX: Guard chống double-complete khi 2 food cùng bay đến slot cuối đồng thời.
+            // PreConfirmDelivery() tăng DeliveredCount ngay (trước animation), nên cả 2 food
+            // đều thấy IsCompleted == true khi animation kết thúc → cả 2 gọi TransitionTo(Completed)
+            // → RaiseCompleted() bắn 2 lần → counter tăng 2. Guard này chặn lần thứ 2.
+            if (OrderData.IsCompleted
+                && CurrentStateId != OrderTrayStateId.Completed
+                && CurrentStateId != OrderTrayStateId.Leaving)
                 TransitionTo(OrderTrayStateId.Completed);
         }
 

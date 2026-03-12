@@ -25,6 +25,7 @@ namespace FoodMatch.Order
             return new Vector2(startX + index * _spacing, 0f);
         }
     }
+
     public sealed class OrderDataBuilder
     {
         private FoodItemData _food;
@@ -89,17 +90,11 @@ namespace FoodMatch.Order
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    //  INTERFACE
-    // ═══════════════════════════════════════════════════════════════════════════
     public interface IOrderTrayProvider
     {
         IReadOnlyList<OrderTray> GetActiveTrays();
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    //  ORDER QUEUE
-    // ═══════════════════════════════════════════════════════════════════════════
     public class OrderQueue : MonoBehaviour, IOrderTrayProvider
     {
         // ── Singleton ────────────────────────────────────────────────────────
@@ -132,10 +127,6 @@ namespace FoodMatch.Order
         private int _completedOrderCount;
         private bool _isInitialized;
 
-        /// <summary>
-        /// SOURCE OF TRUTH: danh sách food chuẩn được dùng bởi cả OrderQueue và FoodTray.
-        /// FoodTraySpawner lấy copy của list này qua OrderQueue.Instance.SharedFoodList.
-        /// </summary>
         public IReadOnlyList<FoodItemData> SharedFoodList { get; private set; }
 
         // ── IOrderTrayProvider ────────────────────────────────────────────────
@@ -168,9 +159,6 @@ namespace FoodMatch.Order
             _completedOrderCount = 0;
             _maxActiveOrders = config.maxActiveOrders;
 
-            // ── Build canonical food list ─────────────────────────────────────
-            // Đây là SOURCE OF TRUTH duy nhất.
-            // FoodTraySpawner sẽ lấy ĐÚNG list này qua SharedFoodList.
             var canonicalList = BuildCanonicalFoodList(config);
             SharedFoodList = canonicalList.AsReadOnly();
 
@@ -231,9 +219,6 @@ namespace FoodMatch.Order
         //  FOOD LIST GENERATION
         // ═════════════════════════════════════════════════════════════════════
 
-        /// <summary>
-        /// Xây dựng canonical food list từ config.
-        /// </summary>
         private List<FoodItemData> BuildCanonicalFoodList(LevelConfig config)
         {
             var result = new List<FoodItemData>();
@@ -247,7 +232,6 @@ namespace FoodMatch.Order
 
             int totalFood = config.totalFoodCount;
 
-            // Chỉ cần chia hết cho 3 (không cần chia hết cho typeCount*3)
             if (totalFood % 3 != 0)
             {
                 int corrected = (totalFood / 3) * 3;
@@ -256,10 +240,9 @@ namespace FoodMatch.Order
                 totalFood = Mathf.Max(3, corrected);
             }
 
-            // Phân phối đều nhất có thể, mỗi loại là bội số của 3
-            int basePerType = (totalFood / typeCount / 3) * 3;   // bội số 3, chia đều
-            int remainder = totalFood - basePerType * typeCount; // phần dư (bội số 3)
-            int extraTypes = remainder / 3; // số loại được thêm 3
+            int basePerType = (totalFood / typeCount / 3) * 3;
+            int remainder = totalFood - basePerType * typeCount;
+            int extraTypes = remainder / 3;
 
             for (int i = 0; i < typeCount; i++)
             {
@@ -324,7 +307,10 @@ namespace FoodMatch.Order
             if (tray == null) { Debug.LogError("[OrderQueue] Thiếu component OrderTray!"); return; }
 
             _slotRegistry.OccupySlot(slotIdx, tray);
+
+            // ── FIX: Unsubscribe trước để tránh double subscription khi tray từ pool ──
             SubscribeTray(tray);
+
             _activeTrays.Add(tray);
 
             tray.Initialize(orderData, slotIdx, targetPos, enterFromTop: true);
@@ -369,6 +355,8 @@ namespace FoodMatch.Order
 
         private void SubscribeTray(OrderTray tray)
         {
+            tray.OnCompleted -= OnTrayCompleted;
+            tray.OnLeft -= OnTrayLeft;
             tray.OnCompleted += OnTrayCompleted;
             tray.OnLeft += OnTrayLeft;
         }
