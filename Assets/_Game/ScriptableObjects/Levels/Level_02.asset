@@ -27,6 +27,7 @@ MonoBehaviour:
   timeLimitSeconds: 0
   obstacles:
   - rid: 8191575206481887269
+  - rid: 8191575211201527808
   obstaclePreset: {fileID: 11400000, guid: b7338c97c490f9b47a5b02810c1c75ab, type: 2}
   references:
     version: 2
@@ -38,3 +39,10 @@ MonoBehaviour:
         tubeCount: 4
         defaultFoodPerTube: 4
         perTubeFoodCount: 
+    - rid: 8191575211201527808
+      type: {class: LockObstacleData, ns: FoodMatch.Data, asm: Assembly-CSharp}
+      data:
+        isEnabled: 1
+        lockedTrayCount: 4
+        defaultLockHp: 3
+        perTrayHpOverride: 

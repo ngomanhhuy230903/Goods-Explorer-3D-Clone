@@ -1,5 +1,4 @@
-﻿// FoodTube.cs
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -9,25 +8,11 @@ using FoodMatch.Food;
 
 namespace FoodMatch.Obstacle
 {
-    /// <summary>
-    /// Mỗi tube hoàn toàn độc lập — index, queue, headItem riêng biệt.
-    ///
-    /// Prefab:
-    ///   FoodTube_Prefab  (RectTransform + Image + FoodTube.cs)
-    ///   └── HeadSlot     (Empty RectTransform) ← assign headSlot
-    ///
-    /// Flow:
-    ///   Initialize(index, foods) → spawn food[0] tại headSlot
-    ///   Tap → HandleTubeFoodTapped → delivery xong → TakeHead()
-    ///   TakeHead() → destroy head → SpawnNextHead() từ queue
-    ///   Queue rỗng → OnTubeEmpty
-    /// </summary>
     [RequireComponent(typeof(RectTransform))]
     [RequireComponent(typeof(Image))]
     public class FoodTube : MonoBehaviour, IPointerClickHandler
     {
         [Header("─── Slot Anchor ─────────────────────────")]
-        [Tooltip("Empty child RectTransform.\ntransform.position = world position (giống OrderSlotUI).")]
         [SerializeField] private Transform headSlot;
 
         [Header("─── Animation ───────────────────────────")]
@@ -43,13 +28,12 @@ namespace FoodMatch.Obstacle
         // ─── Runtime ─────────────────────────────────────────────────────────
         private RectTransform _rect;
 
-        // Mỗi tube có queue và state hoàn toàn riêng
         private FoodItem _headItem;
         private FoodItemData _headData;
         private readonly Queue<FoodItemData> _queue = new();
 
         private int _tubeIndex;
-        private bool _isTaking;  // true khi đang trong flight animation, chặn double-tap
+        private bool _isTaking;
 
         // ─── Public ──────────────────────────────────────────────────────────
         public int TubeIndex => _tubeIndex;
@@ -72,16 +56,11 @@ namespace FoodMatch.Obstacle
             _rect.localScale = anchorRect.localScale;
         }
 
-        /// <summary>
-        /// Khởi tạo tube độc lập với index và danh sách food riêng.
-        /// Spawn ngay food đầu tiên, phần còn lại vào queue ẩn.
-        /// </summary>
         public void Initialize(int index, List<FoodItemData> foods, Transform _ignored)
         {
             _tubeIndex = index;
             _isTaking = false;
 
-            // Clear state cũ của tube này
             StopAllCoroutines();
             DestroyHead();
             _queue.Clear();
@@ -110,15 +89,10 @@ namespace FoodMatch.Obstacle
 
             FoodFlowController.Instance?.HandleTubeFoodTapped(_headItem, this, () =>
             {
-                // Reset sau khi flow hoàn tất (dù success hay fail)
                 _isTaking = false;
             });
         }
 
-        /// <summary>
-        /// Gọi bởi FoodFlowController ngay sau khi delivery reserve thành công.
-        /// Không đợi animation — spawn head mới ngay để player thấy item tiếp theo.
-        /// </summary>
         public void TakeHead()
         {
             if (_headItem == null) return;
@@ -158,7 +132,6 @@ namespace FoodMatch.Obstacle
                 return;
             }
 
-            // Dùng headSlot.position y chang OrderSlotUI.WorldPosition
             Vector3 spawnPos = headSlot != null ? headSlot.position : transform.position;
             Vector3 finalScale = _headData.prefab.transform.localScale;
 
@@ -176,7 +149,15 @@ namespace FoodMatch.Obstacle
 
             _headItem.Initialize(_headData, layerIndex: 0);
 
-            // Pop animation từ zero lên finalScale
+            // Disable FoodInteractionHandler — click xử lý bởi FoodTube hoặc Forwarder
+            var handler = go.GetComponent<FoodInteractionHandler>();
+            if (handler != null) handler.enabled = false;
+
+            // Thêm forwarder để forward click từ food 3D về tube này
+            var forwarder = go.AddComponent<TubeHeadClickForwarder>();
+            forwarder.SetOwnerTube(this);
+
+            // Pop animation
             go.transform.localScale = Vector3.zero;
             StartCoroutine(PopAnim(go.transform, finalScale));
 
@@ -202,14 +183,12 @@ namespace FoodMatch.Obstacle
             Vector3 big = finalScale * popScale;
             float half = popDuration * 0.5f;
 
-            // Scale up
             for (float e = 0f; e < half; e += Time.deltaTime)
             {
                 if (t == null) yield break;
                 t.localScale = Vector3.Lerp(Vector3.zero, big, e / half);
                 yield return null;
             }
-            // Scale down to final
             for (float e = 0f; e < half; e += Time.deltaTime)
             {
                 if (t == null) yield break;

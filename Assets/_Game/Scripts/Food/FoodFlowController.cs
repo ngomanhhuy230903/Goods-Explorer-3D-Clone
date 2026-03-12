@@ -158,40 +158,38 @@ namespace FoodMatch.Food
 
             int instanceId = foodItem.GetInstanceID();
 
-            // Thử match vào OrderTray trước
             var matchResult = _orderQueue.TryMatchFoodWithReservation(
                 foodItem.Data.foodID, instanceId);
 
             if (matchResult.IsMatch)
             {
-                // TakeHead ngay sau khi reserve thành công:
-                // - Xóa reference head khỏi tube (DestroyHead + spawn item tiếp theo)
-                // - Food object vẫn tồn tại vì ExecuteOrderCommand giữ reference qua cmd.Food
-                // - Mỗi tube độc lập — TakeHead() của tube này không ảnh hưởng tube khác
-                sourceTube.TakeHead();
-
                 var cmd = new OrderDeliveryCommand(foodItem, matchResult.Tray, matchResult.SlotIndex);
-                ExecuteOrderCommand(cmd, onComplete);
+
+                // TakeHead SAU khi animation xong — food object phải còn sống trong suốt animation
+                ExecuteOrderCommand(cmd, () =>
+                {
+                    sourceTube.TakeHead();
+                    onComplete?.Invoke();
+                });
             }
             else
             {
-                // Thử vào BackupTray
                 int backupSlot = _backupTray.TryReserveNextSlot(instanceId);
                 if (backupSlot < 0)
                 {
                     Debug.Log("[FoodFlowController] BackupTray đầy → THUA!");
                     EventBus.RaiseBackupFull();
-                    // Không TakeHead — food vẫn ở ống, player thấy bounce feedback
                     foodItem.PlayLockedBounce();
                     onComplete?.Invoke();
                     return;
                 }
 
-                // Reserve backup thành công → TakeHead, food bay vào backup
-                sourceTube.TakeHead();
-
                 var cmd = new BackupDeliveryCommand(foodItem, backupSlot);
-                ExecuteBackupCommand(cmd, onComplete);
+                ExecuteBackupCommand(cmd, () =>
+                {
+                    sourceTube.TakeHead();
+                    onComplete?.Invoke();
+                });
             }
         }
 
