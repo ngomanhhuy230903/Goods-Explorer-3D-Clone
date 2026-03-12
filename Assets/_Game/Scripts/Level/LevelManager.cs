@@ -55,12 +55,7 @@ namespace FoodMatch.Level
                 LoadLevel(CurrentLevelIndex);
             else if (state == GameState.Win || state == GameState.Lose)
             {
-                FoodFlowController.Instance?.ResetDependencies();
-                FoodBuffer.Instance?.ForceReset();
-                backupTray?.ClearAllFood();
-                foodTraySpawner?.ClearFood();
-                orderQueue?.Reset();
-                foodGridSpawner?.ClearGrid();
+                ResetAllSystems();
             }
         }
 
