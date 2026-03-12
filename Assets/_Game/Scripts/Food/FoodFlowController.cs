@@ -106,27 +106,22 @@ namespace FoodMatch.Food
         #region Public API
 
         /// <summary>Gọi bởi FoodInteractionHandler khi player tap vào food trên FoodTray.</summary>
-        public void HandleFoodTapped(FoodItem foodItem, Action onComplete = null)
+        public void HandleFoodTapped(FoodItem foodItem, Action onComplete = null, bool keepScale = false)
         {
             if (!_isReady) { onComplete?.Invoke(); return; }
             if (foodItem == null || foodItem.Data == null) { onComplete?.Invoke(); return; }
 
-            // CASE: BackupTray food (OwnerTray == null)
             if (foodItem.OwnerTray == null)
             {
-                // Kiểm tra xem có phải ConveyorTray food đã được pop rồi không
-                // (conveyorOwner.OwnerConveyorTray đã null) → đi thẳng vào delivery
-                BuildAndExecuteDeliveryCommand(foodItem, onComplete);
+                BuildAndExecuteDeliveryCommand(foodItem, onComplete, keepScale);
                 return;
             }
 
-            // CASE: FoodTray food — pop tại đây (một lần duy nhất)
             FoodItem poppedItem = foodItem.OwnerTray.TryPopItem(foodItem);
             if (poppedItem == null) { onComplete?.Invoke(); return; }
 
-            BuildAndExecuteDeliveryCommand(poppedItem, onComplete);
+            BuildAndExecuteDeliveryCommand(poppedItem, onComplete, keepScale);
         }
-
         /// <summary>
         /// Gọi bởi FoodTube.OnPointerClick() khi player tap vào ống.
         /// Flow giống BackupTray food — match order hoặc vào backup.
@@ -174,10 +169,9 @@ namespace FoodMatch.Food
         // ─────────────────────────────────────────────────────────────────────
         #region Command Pipeline
 
-        private void BuildAndExecuteDeliveryCommand(FoodItem food, Action onComplete)
+        private void BuildAndExecuteDeliveryCommand(FoodItem food, Action onComplete, bool keepScale = false)
         {
             int instanceId = food.GetInstanceID();
-
             var matchResult = _orderQueue.TryMatchFoodWithReservation(food.Data.foodID, instanceId);
 
             if (matchResult.IsMatch)
@@ -199,10 +193,9 @@ namespace FoodMatch.Food
                 }
 
                 var cmd = new BackupDeliveryCommand(food, backupSlot);
-                ExecuteBackupCommand(cmd, onComplete);
+                ExecuteBackupCommand(cmd, onComplete, keepScale);  // ← truyền keepScale
             }
         }
-
         private void ExecuteOrderCommand(OrderDeliveryCommand cmd, Action onComplete)
         {
             cmd.Execute(null);
@@ -255,7 +248,7 @@ namespace FoodMatch.Food
             });
         }
 
-        private void ExecuteBackupCommand(BackupDeliveryCommand cmd, Action onComplete)
+        private void ExecuteBackupCommand(BackupDeliveryCommand cmd, Action onComplete, bool keepScale = false)
         {
             cmd.Execute(null);
 
@@ -263,7 +256,8 @@ namespace FoodMatch.Food
             int slotIndex = cmd.SlotIndex;
 
             Vector3 prefabScale = food.Data.prefab.transform.localScale;
-            Vector3 targetScale = prefabScale * backupSlotScaleMultiplier;
+            // Nếu keepScale → giữ nguyên scale hiện tại, không nhân multiplier
+            Vector3 targetScale = keepScale ? food.transform.localScale : prefabScale * backupSlotScaleMultiplier;
             Vector3 targetPos = _backupTray.GetSlotWorldPosition(slotIndex);
 
             var backupConfig = new FlyConfig
@@ -283,7 +277,6 @@ namespace FoodMatch.Food
                 onComplete?.Invoke();
             });
         }
-
         #endregion
 
         // ─────────────────────────────────────────────────────────────────────

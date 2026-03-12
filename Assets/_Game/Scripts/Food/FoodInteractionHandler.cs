@@ -93,7 +93,7 @@ namespace FoodMatch.Food
                 FoodFlowController.Instance.HandleFoodTapped(popped, () =>
                 {
                     _isProcessing = false;
-                });
+                }, keepScale: true);
                 return;
             }
 
