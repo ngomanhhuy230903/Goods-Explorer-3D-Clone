@@ -164,8 +164,6 @@ namespace FoodMatch.Food
             if (matchResult.IsMatch)
             {
                 var cmd = new OrderDeliveryCommand(foodItem, matchResult.Tray, matchResult.SlotIndex);
-
-                // TakeHead SAU khi animation xong — food object phải còn sống trong suốt animation
                 ExecuteOrderCommand(cmd, () =>
                 {
                     sourceTube.TakeHead();
@@ -174,25 +172,11 @@ namespace FoodMatch.Food
             }
             else
             {
-                int backupSlot = _backupTray.TryReserveNextSlot(instanceId);
-                if (backupSlot < 0)
-                {
-                    Debug.Log("[FoodFlowController] BackupTray đầy → THUA!");
-                    EventBus.RaiseBackupFull();
-                    foodItem.PlayLockedBounce();
-                    onComplete?.Invoke();
-                    return;
-                }
-
-                var cmd = new BackupDeliveryCommand(foodItem, backupSlot);
-                ExecuteBackupCommand(cmd, () =>
-                {
-                    sourceTube.TakeHead();
-                    onComplete?.Invoke();
-                });
+                // Tube không hỗ trợ backup — chỉ bounce tại chỗ
+                foodItem.PlayLockedBounce();
+                onComplete?.Invoke();
             }
         }
-
         #endregion
 
         // ─────────────────────────────────────────────────────────────────────
