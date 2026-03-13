@@ -8,12 +8,18 @@ namespace FoodMatch.Obstacle
     /// Hiển thị lock icon + HP cho FoodTray bị khóa.
     /// Spawn vào neutralContainer (KHÔNG phải child của FoodTray) để tránh scale bị nhân.
     /// Follow vị trí FoodTray qua Update() giống SlotFollower của FoodItem.
+    ///
+    /// FIX 1: Dùng TextMeshPro (3D) thay vì TextMeshProUGUI — không cần Canvas.
+    /// FIX 2: Billboard rotation — icon luôn quay về phía camera dù tray xoay.
     /// </summary>
     public class LockTrayView : MonoBehaviour
     {
         // ─── Inspector ────────────────────────────────────────────────────────
         [Header("─── References ─────────────────────")]
         [SerializeField] private SpriteRenderer lockIconRenderer;
+
+        // FIX 1: Đổi TextMeshProUGUI → TMPro.TextMeshPro (3D Text, không cần Canvas)
+        // Trong prefab: xoá Text (UI), thêm GameObject → Add Component → TextMeshPro (3D)
         [SerializeField] private TMPro.TextMeshPro hpText;
 
         [Header("─── Sprites ─────────────────────────")]
@@ -27,6 +33,10 @@ namespace FoodMatch.Obstacle
         [SerializeField] private float unlockScaleDuration = 0.4f;
         [SerializeField] private float unlockFadeDuration = 0.3f;
 
+        [Header("─── Billboard ────────────────────────")]
+        [Tooltip("Bật để icon & text luôn quay về phía camera (billboard effect).")]
+        [SerializeField] private bool useBillboard = true;
+
         // ─── Runtime ──────────────────────────────────────────────────────────
 
         public int CurrentHp { get; private set; }
@@ -34,21 +44,37 @@ namespace FoodMatch.Obstacle
 
         private Transform _followTarget;
         private Vector3 _followOffset;
-        private bool _isFollowing = false;
+        private bool _isFollowing;
         private Vector3 _baseLocalScale;
+
+        private Camera _mainCam;
 
         // ─────────────────────────────────────────────────────────────────────
 
+        private void Awake()
+        {
+            _mainCam = Camera.main;
+        }
+
         private void Update()
         {
-            if (!_isFollowing || _followTarget == null) return;
-            // Bám theo world position của FoodTray + offset
-            transform.position = _followTarget.position + _followOffset;
+            // ── Follow position ──────────────────────────────────────────────
+            if (_isFollowing && _followTarget != null)
+                transform.position = _followTarget.position + _followOffset;
+
+            // FIX 2: Billboard — luôn quay mặt về phía camera
+            if (useBillboard && _mainCam != null)
+            {
+                // LookAt camera nhưng chỉ dùng forward của camera (tránh nghiêng ngả)
+                transform.rotation = Quaternion.LookRotation(
+                    transform.position - _mainCam.transform.position,
+                    _mainCam.transform.up);
+            }
         }
 
         // ─── Public API ───────────────────────────────────────────────────────
 
-        /// <summary>Bắt đầu follow target (FoodTray.transform) với offset world.</summary>
+        /// <summary>Bắt đầu follow target (anchor slot) với offset world.</summary>
         public void Follow(Transform target, Vector3 worldOffset)
         {
             _followTarget = target;
