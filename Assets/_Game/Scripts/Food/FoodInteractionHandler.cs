@@ -10,10 +10,18 @@ namespace FoodMatch.Food
 {
     /// <summary>
     /// Xử lý tap/click trên FoodItem.
-    /// Hoạt động cho cả FoodTray VÀ ConveyorTray:
-    ///   - FoodTray food: item.OwnerTray != null → FoodTray.TryPopItem()
-    ///   - ConveyorTray food: ConveyorFoodOwner component → ConveyorTray.TryPopItem()
-    ///   - BackupTray food: OwnerTray == null && không có ConveyorFoodOwner
+    ///
+    /// FIX — stale ConveyorFoodOwner sau Reset/GoHome:
+    ///   Khi food trả về pool, FoodItem.OnDespawn() chạy nhưng ConveyorFoodOwner
+    ///   vẫn còn reference cũ → lần play mới food vào case 1 dù không thuộc conveyor
+    ///   → TryPopItem fail → _isProcessing không reset → food bị treo.
+    ///
+    ///   Fix:
+    ///   1. Validate OwnerConveyorTray còn sống (gameObject != null && activeInHierarchy)
+    ///      trước khi dùng — nếu stale → fall-through sang case 2/3.
+    ///   2. Reset _isProcessing trong OnDisable() để pool recycle sạch.
+    ///   3. ConveyorTray.ResetTray() và ConveyorTray.OnDespawn() gọi
+    ///      ClearConveyorOwnerOnAllFood() để null ref trên từng FoodItem.
     /// </summary>
     [RequireComponent(typeof(Collider))]
     public class FoodInteractionHandler : MonoBehaviour,
@@ -29,6 +37,26 @@ namespace FoodMatch.Food
         {
             _foodItem = GetComponent<FoodItem>() ?? GetComponentInParent<FoodItem>();
             _originalScale = transform.localScale;
+        }
+
+        /// <summary>
+        /// Reset state khi GameObject bị disable (trả về pool / despawn).
+        /// Đảm bảo _isProcessing không còn lock khi food được tái sử dụng.
+        /// </summary>
+        private void OnDisable()
+        {
+            _isProcessing = false;
+            // Reset scale về original phòng trường hợp DOTween bị kill giữa chừng
+            transform.DOKill();
+            transform.localScale = _originalScale;
+        }
+
+        private void OnEnable()
+        {
+            // Cập nhật lại _originalScale khi được lấy từ pool
+            // (vì prefab scale có thể khác scale trong pool container)
+            if (_foodItem != null && _foodItem.Data?.prefab != null)
+                _originalScale = _foodItem.Data.prefab.transform.localScale;
         }
 
         private void NotifyTrayInteraction()
@@ -75,32 +103,47 @@ namespace FoodMatch.Food
                 return;
             }
 
-            // CASE 1: Food từ ConveyorTray
+            // ── CASE 1: Food từ ConveyorTray ─────────────────────────────────
             var conveyorOwner = GetComponent<ConveyorFoodOwner>()
                              ?? GetComponentInParent<ConveyorFoodOwner>();
 
             if (conveyorOwner != null && conveyorOwner.OwnerConveyorTray != null)
             {
                 var conveyorTray = conveyorOwner.OwnerConveyorTray;
-                FoodItem popped = conveyorTray.TryPopItem(_foodItem);
-                if (popped == null) return;
 
-                // ✅ Clear TRƯỚC khi gọi HandleFoodTapped để OwnerTray == null
-                // → FoodFlowController sẽ gọi BuildAndExecuteDeliveryCommand trực tiếp
-                conveyorOwner.OwnerConveyorTray = null;
+                // ── FIX: Validate tray còn sống trước khi dùng ───────────────
+                // Sau Reset/GoHome, tray có thể đã bị Destroy hoặc trả về pool
+                // (inactive). Nếu stale → clear ref và fall-through sang case 2/3.
+                bool trayAlive = conveyorTray != null
+                                 && conveyorTray.gameObject != null
+                                 && conveyorTray.gameObject.activeInHierarchy;
 
-                _isProcessing = true;
-                FoodFlowController.Instance.HandleFoodTapped(popped, () =>
+                if (!trayAlive)
                 {
-                    _isProcessing = false;
-                }, keepScale: true);
-                return;
+                    // Stale reference — clear để không lặp lại lần sau
+                    conveyorOwner.OwnerConveyorTray = null;
+                    // Fall-through: xử lý như FoodTray hoặc BackupTray bên dưới
+                }
+                else
+                {
+                    FoodItem popped = conveyorTray.TryPopItem(_foodItem);
+                    if (popped == null) return;
+
+                    // Clear TRƯỚC khi gọi HandleFoodTapped
+                    conveyorOwner.OwnerConveyorTray = null;
+
+                    _isProcessing = true;
+                    FoodFlowController.Instance.HandleFoodTapped(popped, () =>
+                    {
+                        _isProcessing = false;
+                    }, keepScale: true);
+                    return;
+                }
             }
 
-            // CASE 2: Food từ FoodTray
+            // ── CASE 2: Food từ FoodTray ──────────────────────────────────────
             if (_foodItem.OwnerTray != null)
             {
-                // ✅ KHÔNG pop ở đây — để HandleFoodTapped tự pop bên trong
                 _isProcessing = true;
                 FoodFlowController.Instance.HandleFoodTapped(_foodItem, () =>
                 {
@@ -109,7 +152,7 @@ namespace FoodMatch.Food
                 return;
             }
 
-            // CASE 3: BackupTray food
+            // ── CASE 3: BackupTray food ───────────────────────────────────────
             _isProcessing = true;
             FoodFlowController.Instance.HandleFoodTapped(_foodItem, () =>
             {

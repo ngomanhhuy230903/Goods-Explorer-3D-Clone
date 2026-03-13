@@ -11,11 +11,10 @@ namespace FoodMatch.Obstacle
     /// <summary>
     /// Một băng chuyền nhỏ — container UI 2D chứa FoodItem 3D.
     ///
-    /// FIX — InitializeWithList() trả về float = thời điểm animation kết thúc
-    ///   (delay + duration của food cuối cùng). Controller dùng giá trị này
-    ///   để biết chờ bao lâu trước khi bật belt.
-    ///
-    /// Animation: food spawn scale 0→1 TẠI anchor — không di chuyển vị trí.
+    /// FIX — stale ConveyorFoodOwner:
+    ///   Trước khi trả food về pool, gọi ClearConveyorOwnerRef() trên từng item
+    ///   để null ConveyorFoodOwner.OwnerConveyorTray.
+    ///   → FoodInteractionHandler không còn thấy reference cũ → không bị treo.
     /// </summary>
     [RequireComponent(typeof(RectTransform))]
     public class ConveyorTray : MonoBehaviour, IPoolable
@@ -39,8 +38,8 @@ namespace FoodMatch.Obstacle
 
         private Transform _neutralContainer;
 
-        private const float SpawnDuration = 0.3f;   // giống FoodTray
-        private const float FoodStagger = 0.04f;  // giống FoodTray
+        private const float SpawnDuration = 0.3f;
+        private const float FoodStagger = 0.04f;
 
         // ─────────────────────────────────────────────────────────────────────
         private void Awake() => RectTransform = GetComponent<RectTransform>();
@@ -55,14 +54,12 @@ namespace FoodMatch.Obstacle
         public void OnDespawn()
         {
             DOTween.Kill(gameObject);
+            // ── FIX: clear owner ref TRƯỚC khi trả food về pool ──────────────
             ClearAllFood();
         }
 
         // ─── Public API ───────────────────────────────────────────────────────
 
-        /// <summary>
-        /// [LEGACY] Giữ tương thích — gọi InitializeWithList() bên trong.
-        /// </summary>
         public float Initialize(FoodItemData foodData, int foodPerConveyor,
                                 Transform neutralContainer, float baseDelay = 0f)
         {
@@ -73,10 +70,7 @@ namespace FoodMatch.Obstacle
 
         /// <summary>
         /// Khởi tạo với danh sách food ngẫu nhiên.
-        /// baseDelay: delay cộng thêm cho tray này (stagger theo thứ tự tray).
-        ///
-        /// RETURN: thời điểm animation kết thúc = delay của food cuối + SpawnDuration.
-        ///   Controller dùng giá trị này để chờ trước khi bật belt.
+        /// Trả về thời điểm animation kết thúc (để controller delay belt start).
         /// </summary>
         public float InitializeWithList(List<FoodItemData> foodList, int foodPerConveyor,
                                         Transform neutralContainer, float baseDelay = 0f)
@@ -92,26 +86,17 @@ namespace FoodMatch.Obstacle
             int totalFood = l0 + l1;
 
             for (int i = 0; i < l0; i++)
-            {
-                float delay = baseDelay + i * FoodStagger;
                 SpawnFoodItem(foodList[i % foodList.Count], layer0Anchors[i],
-                              layerIdx: 0, delay: delay);
-            }
-            for (int i = 0; i < l1; i++)
-            {
-                float delay = baseDelay + (l0 + i) * FoodStagger;
-                SpawnFoodItem(foodList[(l0 + i) % foodList.Count], layer1Anchors[i],
-                              layerIdx: 1, delay: delay);
-            }
+                              layerIdx: 0, delay: baseDelay + i * FoodStagger);
 
-            // Thời điểm kết thúc = delay của food cuối cùng + duration scale
+            for (int i = 0; i < l1; i++)
+                SpawnFoodItem(foodList[(l0 + i) % foodList.Count], layer1Anchors[i],
+                              layerIdx: 1, delay: baseDelay + (l0 + i) * FoodStagger);
+
             float lastDelay = baseDelay + (totalFood - 1) * FoodStagger;
             return lastDelay + SpawnDuration;
         }
 
-        /// <summary>
-        /// Giống FoodTray.TryPopItem().
-        /// </summary>
         public FoodItem TryPopItem(FoodItem item)
         {
             if (item == null) return null;
@@ -126,6 +111,9 @@ namespace FoodMatch.Obstacle
             _anchorMap.Remove(item);
             _layer0.Remove(item);
             item.OwnerTray = null;
+
+            // ── FIX: clear owner ref ngay khi pop ─────────────────────────────
+            ClearConveyorOwnerRef(item);
 
             if (_layer0.Count == 0 && _layer1.Count > 0)
                 PromoteLayer1ToLayer0();
@@ -144,12 +132,11 @@ namespace FoodMatch.Obstacle
             _neutralContainer = null;
             DOTween.Kill(gameObject);
             transform.localScale = Vector3.one;
+            // ── FIX: ClearAllFood() sẽ clear owner ref trước khi return pool ──
             ClearAllFood();
         }
 
-        // ─── Spawn — giống hệt FoodTray.SpawnFoodItem() ──────────────────────
-        // Food spawn TẠI anchor.position, scale 0 → prefabScale.
-        // Không có chuyển động vị trí → không bị "bay từ trên xuống".
+        // ─── Spawn ────────────────────────────────────────────────────────────
 
         private void SpawnFoodItem(FoodItemData data, Transform anchor,
                                    int layerIdx, float delay)
@@ -185,6 +172,7 @@ namespace FoodMatch.Obstacle
             item.Initialize(data, layerIdx);
             item.SetAnchorRef(anchor);
 
+            // ── Gán owner — sẽ được clear trong ClearConveyorOwnerRef() ────────
             var owner = go.GetComponent<ConveyorFoodOwner>();
             if (owner == null) owner = go.AddComponent<ConveyorFoodOwner>();
             owner.OwnerConveyorTray = this;
@@ -201,7 +189,6 @@ namespace FoodMatch.Obstacle
                 .OnComplete(() =>
                 {
                     if (go == null || follower == null) return;
-                    // Follow anchor BẮT ĐẦU sau khi scale xong
                     follower.Follow(anchor);
                 });
         }
@@ -265,10 +252,23 @@ namespace FoodMatch.Obstacle
             foreach (var item in list)
             {
                 if (item == null) continue;
+                // ── FIX: null owner ref TRƯỚC khi return pool ─────────────────
+                ClearConveyorOwnerRef(item);
                 item.GetComponent<SlotFollower>()?.Unfollow();
                 PoolManager.Instance.ReturnFood(item.FoodID, item.gameObject);
             }
             list.Clear();
+        }
+
+        /// <summary>
+        /// Null ConveyorFoodOwner.OwnerConveyorTray trên item.
+        /// Gọi trước mọi thao tác trả food về pool hoặc pop khỏi tray.
+        /// </summary>
+        private static void ClearConveyorOwnerRef(FoodItem item)
+        {
+            if (item == null) return;
+            var owner = item.GetComponent<ConveyorFoodOwner>();
+            if (owner != null) owner.OwnerConveyorTray = null;
         }
     }
 
