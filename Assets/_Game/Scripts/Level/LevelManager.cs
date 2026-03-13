@@ -5,6 +5,7 @@ using FoodMatch.Food;
 using FoodMatch.Order;
 using FoodMatch.Tray;
 using FoodMatch.Obstacle;
+using FoodMatch.Items;
 
 namespace FoodMatch.Level
 {
@@ -173,6 +174,7 @@ namespace FoodMatch.Level
 
         private void ResetAllSystems()
         {
+            BoosterManager.Instance?.ResetAllBoosterSessions();
             FoodFlowController.Instance?.ResetDependencies();
             FoodBuffer.Instance?.ForceReset();
             obstacleManager?.ResetObstacles();

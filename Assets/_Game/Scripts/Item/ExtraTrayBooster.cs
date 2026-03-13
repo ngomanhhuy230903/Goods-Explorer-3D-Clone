@@ -17,52 +17,46 @@ namespace FoodMatch.Items
 
         /// <summary>
         /// Flag chống dùng lại trong cùng 1 game session.
-        /// Consume xảy ra ngay khi UseBooster() pass guard (trong BoosterManager),
-        /// flag này đảm bảo CanExecute() = false ngay sau lần dùng đầu tiên.
-        /// Reset về false khi Initialize() được gọi lại (level mới / game mới).
+        /// Reset về false mỗi khi ResetSession() được gọi (LoadLevel / Restart / GoHome).
         /// </summary>
-        private bool _usedThisGame = false;
+        private bool _usedThisSession = false;
 
         public void Initialize(BoosterContext ctx)
         {
             _backupTray = ctx.BackupTray;
             _spawner = ctx.BackupTraySpawner;
             _runner = ctx.CoroutineRunner;
+            // KHÔNG reset _usedThisSession ở đây — Initialize chỉ chạy 1 lần lúc AutoRegisterAll
+        }
 
-            // Reset khi game/level mới bắt đầu
-            _usedThisGame = false;
+        /// <summary>
+        /// Gọi từ BoosterManager.ResetAllBoosterSessions() mỗi khi level load/restart.
+        /// </summary>
+        public void ResetSession()
+        {
+            _usedThisSession = false;
         }
 
         public bool CanExecute()
         {
             if (_backupTray == null || _spawner == null) return false;
-            if (_usedThisGame) return false;                    // đã dùng rồi → block
+            if (_usedThisSession) return false;
             return _backupTray.Capacity < MaxSlots;
         }
 
         public void Execute()
         {
-            // Đánh dấu NGAY LẬP TỨC — trước khi animation chạy.
-            // Dù người dùng spam click thêm, CanExecute() sẽ trả false từ frame này.
-            _usedThisGame = true;
-
-            Debug.Log($"[ExtraTray] Executing. Capacity hiện tại: {_backupTray.Capacity}");
-
-            // Chạy coroutine — NotifyBoosterCompleted sẽ được gọi SAU KHI animation xong.
+            _usedThisSession = true;
+            Debug.Log($"[ExtraTray] Executing. Capacity: {_backupTray.Capacity}");
             _runner.StartCoroutine(ExecuteRoutine());
         }
 
         private IEnumerator ExecuteRoutine()
         {
-            // Chờ AddExtraSlotRoutine hoàn thành (nó tự xử lý InputBlocker bên trong)
             bool done = false;
             _spawner.AddExtraSlot(onComplete: () => done = true);
-
             yield return new WaitUntil(() => done);
-
             Debug.Log($"[ExtraTray] Done. Capacity mới: {_backupTray.Capacity}");
-
-            // Release lock SAU KHI animation xong — consumed=true vì đã mark _usedThisGame
             BoosterManager.Instance?.NotifyBoosterCompleted(BoosterName, consumed: true);
         }
     }

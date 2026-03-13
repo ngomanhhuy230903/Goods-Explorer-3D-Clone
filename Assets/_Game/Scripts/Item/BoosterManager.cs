@@ -240,6 +240,23 @@ namespace FoodMatch.Items
             return data != null ? BoosterInventory.GetQuantity(data) : 0;
         }
 
+        /// <summary>
+        /// Gọi mỗi khi bắt đầu level mới (LoadLevel / Restart / GoHome → Play).
+        /// Reset per-session state của tất cả booster (vd: ExtraTray _usedThisSession).
+        /// Cũng giải phóng busy lock phòng trường hợp coroutine bị interrupt.
+        /// </summary>
+        public void ResetAllBoosterSessions()
+        {
+            // Release lock nếu đang kẹt (level kết thúc giữa chừng animation)
+            _isBusy = false;
+            _pendingConsumeBoosterName = null;
+
+            foreach (var booster in _registry.Values)
+                booster.ResetSession();
+
+            Debug.Log("[BoosterManager] All booster sessions reset.");
+        }
+
         public void UnregisterAll()
         {
             _registry.Clear();
