@@ -37,18 +37,18 @@ namespace FoodMatch.Items
         public bool CanExecute()
         {
             if (_orderQueue == null || _gridSpawner == null) return false;
-            return FindOldestActiveTray() != null;
+            return FindBestTray() != null;
         }
 
         public void Execute() => _runner.StartCoroutine(MagnetRoutine());
 
         private IEnumerator MagnetRoutine()
         {
-            var targetTray = FindOldestActiveTray();
+            var targetTray = FindBestTray(); // Đã check available foods bên trong
             if (targetTray == null)
             {
-                // Không có tray hợp lệ → release lock ngay
-                BoosterManager.Instance?.NotifyBoosterCompleted(BoosterName);
+                Debug.LogWarning("[Magnet] Không tìm thấy tray hợp lệ có food tương ứng.");
+                BoosterManager.Instance?.NotifyBoosterCompleted(BoosterName, consumed: false);
                 yield break;
             }
 
@@ -60,24 +60,21 @@ namespace FoodMatch.Items
 
             if (needed <= 0)
             {
-                Debug.Log($"[Magnet] tray#{trayKey} đang được fill đủ bởi lần trước, bỏ qua.");
-                BoosterManager.Instance?.NotifyBoosterCompleted(BoosterName);
+                Debug.Log($"[Magnet] tray#{trayKey} đã được fill đủ.");
+                BoosterManager.Instance?.NotifyBoosterCompleted(BoosterName, consumed: false);
                 yield break;
             }
-
-            Debug.Log($"[Magnet] tray#{trayKey} foodID={foodID} cần={needed} (reserved={reserved})");
 
             var foods = CollectFoodsFromFoodTrays(foodID, needed);
             if (foods.Count == 0)
             {
-                Debug.LogWarning("[Magnet] Không tìm thấy food trong FoodTray nào!");
-                BoosterManager.Instance?.NotifyBoosterCompleted(BoosterName);
+                Debug.LogWarning("[Magnet] Không tìm thấy food nào!");
+                BoosterManager.Instance?.NotifyBoosterCompleted(BoosterName, consumed: false);
                 yield break;
             }
 
-            // ── Reserve NGAY trước khi animation chạy ────────────────────────
+            // Từ đây trở đi: sẽ có tác dụng → consumed = true khi xong
             _reservedSlots[trayKey] = reserved + foods.Count;
-
             int baseDelivered = targetTray.OrderData.DeliveredCount + reserved;
 
             for (int i = 0; i < foods.Count; i++)
@@ -94,12 +91,11 @@ namespace FoodMatch.Items
                     AnimateSingleFood(entry, targetTray, slot, cachedScale, delay, trayKey));
             }
 
-            // Chờ toàn bộ animation hoàn thành
             float totalWait = (foods.Count - 1) * StaggerDelay + FlyDuration + 0.6f;
             yield return new WaitForSeconds(totalWait);
 
-            // ── Tất cả food đã bay xong → release lock ────────────────────────
-            BoosterManager.Instance?.NotifyBoosterCompleted(BoosterName);
+            // Hoàn thành có tác dụng → trừ quantity
+            BoosterManager.Instance?.NotifyBoosterCompleted(BoosterName, consumed: true);
             Debug.Log("[Magnet] Done.");
         }
 
@@ -293,20 +289,54 @@ namespace FoodMatch.Items
             return food;
         }
 
-        private OrderTray FindOldestActiveTray()
+        private OrderTray FindBestTray()
         {
-            OrderTray oldest = null;
-            int minIndex = int.MaxValue;
+            OrderTray best = null;
+            int maxRemaining = -1;
+
             foreach (var tray in _orderQueue.GetActiveTrays())
             {
                 if (tray == null) continue;
                 if (tray.CurrentStateId != OrderTrayStateId.Active) continue;
                 if (tray.RemainingCount <= 0) continue;
-                if (tray.TrayIndex < minIndex) { minIndex = tray.TrayIndex; oldest = tray; }
+
+                // Kiểm tra có food tương ứng trong grid không
+                int foodID = tray.FoodID;
+                int reserved = _reservedSlots.TryGetValue(tray.TrayIndex, out var r) ? r : 0;
+                int needed = tray.RemainingCount - reserved;
+                if (needed <= 0) continue;
+
+                var available = CountAvailableFoods(foodID);
+                if (available <= 0) continue; // Không có food → bỏ qua tray này
+
+                // Ưu tiên tray nhiều food nhất, tie-break bằng TrayIndex nhỏ hơn
+                if (tray.RemainingCount > maxRemaining ||
+                   (tray.RemainingCount == maxRemaining && best != null && tray.TrayIndex < best.TrayIndex))
+                {
+                    maxRemaining = tray.RemainingCount;
+                    best = tray;
+                }
             }
-            return oldest;
+            return best;
         }
 
+        private int CountAvailableFoods(int foodID)
+        {
+            int count = 0;
+            var foodTrays = _gridSpawner.GetCellContainer()
+                .GetComponentsInChildren<FoodTray>(includeInactive: false);
+            var activeFoods = _gridSpawner.GetAllActiveFoods();
+
+            foreach (var f in activeFoods)
+            {
+                if (f.FoodID != foodID) continue;
+                if (f.LayerIndex <= 1) count++;
+            }
+            foreach (var tray in foodTrays)
+                count += tray.GetPendingFoodsOfType(foodID).Count;
+
+            return count;
+        }
         private struct FoodEntry
         {
             public FoodItem FoodItem;

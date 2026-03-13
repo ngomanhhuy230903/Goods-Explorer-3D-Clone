@@ -12,9 +12,11 @@ namespace FoodMatch.Items
     ///
     /// Flow:
     ///   1. AutoRegisterAll() → scan assembly, tạo IBooster instances
-    ///   2. UseBooster()      → check _isBusy → check unlock + quantity → Execute() → TryConsume()
+    ///   2. UseBooster()      → check _isBusy → check unlock + quantity → CanExecute() → Execute()
     ///   3. NotifyBoosterCompleted() → mỗi IBooster.Execute() BẮT BUỘC gọi khi xong
-    ///   4. OnLevelUp()       → unlock booster mới + grant initialQuantity
+    ///      consumed=true  → trừ quantity (booster thực sự có tác dụng)
+    ///      consumed=false → không trừ (không có tray/food, không làm gì)
+    ///   4. OnLevelUp() → unlock booster mới + grant initialQuantity
     /// </summary>
     public class BoosterManager : MonoBehaviour
     {
@@ -33,6 +35,11 @@ namespace FoodMatch.Items
         /// gọi NotifyBoosterCompleted().
         /// </summary>
         private bool _isBusy = false;
+
+        /// <summary>
+        /// Tên booster đang chờ consume — sẽ bị trừ quantity trong NotifyBoosterCompleted(consumed=true).
+        /// </summary>
+        private string _pendingConsumeBoosterName = null;
 
         public BoosterDatabase Database => database;
 
@@ -55,6 +62,7 @@ namespace FoodMatch.Items
         {
             _registry.Clear();
             _isBusy = false;
+            _pendingConsumeBoosterName = null;
 
             var boosterInterface = typeof(IBooster);
             foreach (var type in Assembly.GetExecutingAssembly().GetTypes())
@@ -93,6 +101,7 @@ namespace FoodMatch.Items
         /// <summary>
         /// Gọi từ BoosterSlotView khi người chơi nhấn nút booster.
         /// Bị chặn nếu có booster khác đang chạy (_isBusy = true).
+        /// Quantity CHỈ bị trừ sau khi booster thực sự có tác dụng (trong NotifyBoosterCompleted).
         /// </summary>
         public void UseBooster(string boosterName)
         {
@@ -112,9 +121,8 @@ namespace FoodMatch.Items
             var data = database?.GetByName(boosterName);
             if (data == null)
             {
-                Debug.LogError($"[BoosterManager] Không tìm thấy BoosterData SO cho '{boosterName}'. " +
-                               "Kiểm tra: 1) Database SO đã gán vào BoosterManager chưa? " +
-                               "2) boosterName trong SO có khớp chính xác không?");
+                Debug.LogError($"[BoosterManager] Không có BoosterData cho '{boosterName}'. " +
+                               "Kiểm tra: 1) Database SO đã gán chưa? 2) boosterName có khớp không?");
                 return;
             }
 
@@ -131,32 +139,67 @@ namespace FoodMatch.Items
                 return;
             }
 
+            // CanExecute() kiểm tra TRƯỚC khi lock.
+            // Nếu fail → không lock, không consume, button giữ nguyên trạng thái.
             if (!booster.CanExecute())
             {
-                Debug.Log($"[BoosterManager] '{boosterName}' không thể dùng lúc này.");
+                Debug.Log($"[BoosterManager] '{boosterName}' CanExecute = false, không thực hiện.");
                 return;
             }
 
-            // ── Lock → Consume → Execute ──────────────────────────────────────
-            // TryConsume sau khi đã qua hết guard để tránh trừ nhầm khi bị reject
+            // Tất cả guard đã pass → lock và execute.
+            // Quantity sẽ bị trừ trong NotifyBoosterCompleted(consumed=true).
             _isBusy = true;
-            BoosterInventory.TryConsume(data);
+            _pendingConsumeBoosterName = boosterName;
             booster.Execute();
-            // QUAN TRỌNG: Execute() phải gọi NotifyBoosterCompleted() khi hoàn thành!
 
-            Debug.Log($"[BoosterManager] Using '{boosterName}'. Còn lại: {BoosterInventory.GetQuantity(data)}");
+            Debug.Log($"[BoosterManager] Đang thực thi '{boosterName}'. Qty hiện tại (chưa trừ): {BoosterInventory.GetQuantity(data)}");
         }
 
         /// <summary>
         /// BẮT BUỘC gọi từ mỗi IBooster.Execute() khi hiệu ứng đã hoàn thành.
         /// Giải phóng lock và fire event để UI refresh.
-        /// Nếu quên gọi → game bị kẹt, không dùng được booster nào nữa.
+        ///
+        /// consumed = true  → booster thực sự có tác dụng → trừ 1 quantity.
+        /// consumed = false → không có tray/food phù hợp → không trừ quantity.
+        ///
+        /// Nếu quên gọi → _isBusy kẹt true → game không dùng được booster nào nữa.
         /// </summary>
-        public void NotifyBoosterCompleted(string boosterName)
+        public void NotifyBoosterCompleted(string boosterName, bool consumed = true)
         {
+            if (consumed && _pendingConsumeBoosterName == boosterName)
+            {
+                var data = database?.GetByName(boosterName);
+                if (data != null)
+                {
+                    BoosterInventory.TryConsume(data);
+                    Debug.Log($"[BoosterManager] Consumed 1x '{boosterName}'. Còn lại: {BoosterInventory.GetQuantity(data)}");
+                }
+            }
+            else if (!consumed)
+            {
+                Debug.Log($"[BoosterManager] '{boosterName}' không có tác dụng → không trừ quantity.");
+            }
+
+            _pendingConsumeBoosterName = null;
             _isBusy = false;
             EventBus.RaiseBoosterActivated(boosterName);
-            Debug.Log($"[BoosterManager] '{boosterName}' completed. Lock released.");
+            Debug.Log($"[BoosterManager] '{boosterName}' completed. Lock released. consumed={consumed}");
+        }
+
+        /// <summary>
+        /// Reset busy flag khi game kết thúc (Win/Lose) để tránh kẹt lock.
+        /// Gọi từ GameManager.HandleGameStateChanged khi state = Win | Lose.
+        /// KHÔNG trừ quantity vì booster chưa hoàn thành.
+        /// </summary>
+        public void ForceReleaseLock()
+        {
+            if (_isBusy)
+            {
+                _pendingConsumeBoosterName = null;
+                _isBusy = false;
+                Debug.LogWarning("[BoosterManager] ForceReleaseLock called — lock cleared, quantity NOT consumed.");
+            }
         }
 
         /// <summary>
@@ -201,19 +244,7 @@ namespace FoodMatch.Items
         {
             _registry.Clear();
             _isBusy = false;
-        }
-
-        /// <summary>
-        /// Reset busy flag khi game kết thúc (Win/Lose) để tránh kẹt lock.
-        /// Gọi từ GameManager.HandleGameStateChanged khi state = Win | Lose.
-        /// </summary>
-        public void ForceReleaseLock()
-        {
-            if (_isBusy)
-            {
-                _isBusy = false;
-                Debug.LogWarning("[BoosterManager] ForceReleaseLock called.");
-            }
+            _pendingConsumeBoosterName = null;
         }
 
 #if UNITY_EDITOR
