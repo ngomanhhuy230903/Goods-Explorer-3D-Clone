@@ -78,11 +78,25 @@ namespace FoodMatch.Order
         public override void Enter()
         {
             _bgImage?.DOColor(_completedColor, 0.2f).SetUpdate(true);
-            Owner.transform.DOPunchScale(Vector3.one * 0.22f, 0.45f, 7, 0.5f).SetUpdate(true);
+
+            // ─── FIX: OnComplete → visual thực sự xong → OrderQueue mới check Win ───
+            // DOPunchScale chạy 0.45f giây. Trước fix: RaiseAllOrdersCompleted fire ngay
+            // trong OnTrayCompleted (trước animation). Sau fix: RaiseVisualCompleted chỉ
+            // fire sau khi DOPunchScale hoàn tất → OrderQueue.OnTrayVisualCompleted mới
+            // được phép raise RaiseAllOrdersCompleted → GameManager nhận Win đúng thời điểm.
+            //
+            // KHÔNG ảnh hưởng: RaiseCompleted() + RaiseOrderCompleted() vẫn fire ngay lập
+            // tức như cũ → spawn order mới, counter, LevelProgressTracker đều không đổi.
+            Owner.transform
+                .DOPunchScale(Vector3.one * 0.22f, 0.45f, 7, 0.5f)
+                .SetUpdate(true)
+                .OnComplete(() => Owner.RaiseVisualCompleted()); // 🆕
+
             _vfxRoot?.SetActive(true);
 
             SlotReservationRegistry.Instance.ClearOrderTray(Owner.TrayIndex);
 
+            // Logic flow: giữ nguyên hoàn toàn
             Owner.RaiseCompleted();
             EventBus.RaiseOrderCompleted(Owner.TrayIndex);
 
@@ -147,8 +161,17 @@ namespace FoodMatch.Order
         public event Action<OrderTray> OnCompleted;
         public event Action<OrderTray> OnLeft;
 
+        /// <summary>
+        /// 🆕 Fire SAU KHI DOPunchScale của CompletedState hoàn tất (~0.45f giây).
+        /// OrderQueue lắng nghe event này — và CHỈ event này — để raise
+        /// RaiseAllOrdersCompleted khi đây là order cuối cùng.
+        /// Các system khác (LevelProgressTracker, GameManager) KHÔNG cần đổi gì.
+        /// </summary>
+        public event Action<OrderTray> OnVisualCompleted; // 🆕
+
         internal void RaiseCompleted() => OnCompleted?.Invoke(this);
         internal void RaiseLeft() => OnLeft?.Invoke(this);
+        internal void RaiseVisualCompleted() => OnVisualCompleted?.Invoke(this); // 🆕
 
         // ── State Machine ─────────────────────────────────────────────────────
         private OrderTrayState _currentState;
@@ -244,16 +267,13 @@ namespace FoodMatch.Order
             if (OrderData == null || OrderData.FoodID != foodID) return false;
             if (OrderData.IsCompleted) return false;
 
-            // Tìm slot: bắt đầu từ DeliveredCount, nhảy qua slot đã reserved
             int startSlot = OrderData.DeliveredCount;
             int totalSlots = slots.Count;
 
             for (int s = startSlot; s < totalSlots; s++)
             {
-                // Slot này đã delivered (confirmed) rồi → skip
                 if (s < OrderData.DeliveredCount) continue;
 
-                // Thử reserve — nếu đã có người khác reserve thì next slot
                 if (SlotReservationRegistry.Instance.TryReserveOrderSlot(
                         TrayIndex, s, foodItemInstanceId))
                 {
@@ -262,7 +282,6 @@ namespace FoodMatch.Order
                 }
             }
 
-            // Tất cả slot đã đầy hoặc đang reserved
             Debug.Log($"[OrderTray#{TrayIndex}] Không còn slot cho food#{foodItemInstanceId}");
             return false;
         }
@@ -293,20 +312,15 @@ namespace FoodMatch.Order
 
         /// <summary>
         /// [PHASE 1] Đánh dấu delivered về mặt LOGIC ngay lập tức, TRƯỚC khi animation bay xong.
-        /// Gọi ngay sau khi food bắt đầu bay → OrderData.DeliveredCount tăng ngay →
-        /// food thứ 2 cùng type sẽ thấy slot tiếp theo, không bị đánh trùng.
         /// </summary>
         public void PreConfirmDelivery(int slotIndex)
         {
             if (slotIndex < 0 || slotIndex >= slots.Count) return;
             OrderData.Deliver();
-            // Không transition Completed ở đây — đợi FinalizeDeliveryVisual
-            // để animation đáp xuống xong rồi mới show hiệu ứng hoàn thành.
         }
 
         /// <summary>
         /// [PHASE 2] Chạy visual sau khi food đáp xuống slot (OnComplete của fly animation).
-        /// - Nếu order IsCompleted → TransitionTo Completed.
         /// </summary>
         public void FinalizeDeliveryVisual(int slotIndex)
         {
@@ -315,10 +329,6 @@ namespace FoodMatch.Order
             slots[slotIndex].PlayReceiveAnimation();
             slots[slotIndex].MarkDelivered();
 
-            // FIX: Guard chống double-complete khi 2 food cùng bay đến slot cuối đồng thời.
-            // PreConfirmDelivery() tăng DeliveredCount ngay (trước animation), nên cả 2 food
-            // đều thấy IsCompleted == true khi animation kết thúc → cả 2 gọi TransitionTo(Completed)
-            // → RaiseCompleted() bắn 2 lần → counter tăng 2. Guard này chặn lần thứ 2.
             if (OrderData.IsCompleted
                 && CurrentStateId != OrderTrayStateId.Completed
                 && CurrentStateId != OrderTrayStateId.Leaving)
@@ -326,7 +336,7 @@ namespace FoodMatch.Order
         }
 
         /// <summary>
-        /// Legacy single-call confirm. Dùng khi chỉ có 1 food bay (không cần tách phase).
+        /// Legacy single-call confirm. Dùng khi chỉ có 1 food bay.
         /// </summary>
         public void ConfirmDelivery(int slotIndex)
         {
@@ -355,11 +365,6 @@ namespace FoodMatch.Order
             _currentState.Enter();
         }
 
-        /// <summary>
-        /// Trả về FoodTargetScale của slot tại <paramref name="slotIndex"/>.
-        /// MagnetBooster cache giá trị này TRƯỚC khi bất kỳ ConfirmDelivery nào được gọi
-        /// để đảm bảo từng food lấy đúng scale của slot mình sẽ đáp xuống.
-        /// </summary>
         public Vector3 GetSlotFoodScale(int slotIndex)
         {
             if (slotIndex < 0 || slotIndex >= slots.Count)

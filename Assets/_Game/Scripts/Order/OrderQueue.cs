@@ -127,8 +127,6 @@ namespace FoodMatch.Order
         private int _completedOrderCount;
         private bool _isInitialized;
 
-        // THÊM MỚI: backing field để TubeObstacle có thể RemoveAt
-        // SharedFoodList vẫn trả về IReadOnlyList — không thay đổi contract cũ
         private List<FoodItemData> _canonicalFoodList = new();
         public IReadOnlyList<FoodItemData> SharedFoodList => _canonicalFoodList;
 
@@ -162,8 +160,6 @@ namespace FoodMatch.Order
             _completedOrderCount = 0;
             _maxActiveOrders = config.maxActiveOrders;
 
-            // THAY: dùng _canonicalFoodList thay vì local var
-            // SharedFoodList tự động reflect vì là property => _canonicalFoodList
             _canonicalFoodList = BuildCanonicalFoodList(config);
 
             var orders = GenerateOrdersFromList(_canonicalFoodList);
@@ -216,15 +212,12 @@ namespace FoodMatch.Order
             SlotReservationRegistry.Instance.ClearAll();
             _completedOrderCount = 0;
             _isInitialized = false;
-            // THAY: clear list thay vì set null — giữ reference hợp lệ
             _canonicalFoodList.Clear();
         }
 
-        // ── THÊM MỚI ─────────────────────────────────────────────────────────
         /// <summary>
         /// Lấy ngẫu nhiên <paramref name="count"/> item ra khỏi _canonicalFoodList
         /// để dành cho TubeObstacle. Gọi TRƯỚC khi FoodTraySpawner đọc SharedFoodList.
-        /// Không ảnh hưởng đến bất kỳ logic nào khác của OrderQueue.
         /// </summary>
         public List<FoodItemData> ConsumeFoodForTubes(int count)
         {
@@ -241,7 +234,6 @@ namespace FoodMatch.Order
                     $"[OrderQueue] ConsumeFoodForTubes: yêu cầu {count} " +
                     $"nhưng chỉ có {_canonicalFoodList.Count} → lấy {actual}.");
 
-            // Shuffle toàn bộ indices rồi lấy `actual` cái đầu
             var allIdx = new List<int>(_canonicalFoodList.Count);
             for (int i = 0; i < _canonicalFoodList.Count; i++) allIdx.Add(i);
             for (int i = allIdx.Count - 1; i > 0; i--)
@@ -250,7 +242,6 @@ namespace FoodMatch.Order
                 (allIdx[i], allIdx[j]) = (allIdx[j], allIdx[i]);
             }
 
-            // Sort giảm dần để RemoveAt không lệch index
             var toRemove = allIdx.GetRange(0, actual);
             toRemove.Sort((a, b) => b.CompareTo(a));
 
@@ -263,7 +254,6 @@ namespace FoodMatch.Order
             Log($"ConsumeFoodForTubes: lấy {result.Count}, còn lại {_canonicalFoodList.Count} cho tray.");
             return result;
         }
-        // ─────────────────────────────────────────────────────────────────────
 
         // ═════════════════════════════════════════════════════════════════════
         //  FOOD LIST GENERATION
@@ -368,17 +358,38 @@ namespace FoodMatch.Order
         }
 
         // ═════════════════════════════════════════════════════════════════════
-        //  EVENT HANDLERS
+        //  TRAY EVENT HANDLERS
         // ═════════════════════════════════════════════════════════════════════
 
+        /// <summary>
+        /// Đếm order hoàn thành về mặt LOGIC.
+        /// KHÔNG raise AllOrdersCompleted ở đây — chờ visual xong (OnTrayVisualCompleted).
+        /// Mọi logic khác (counter, log) giữ nguyên hoàn toàn.
+        /// </summary>
         private void OnTrayCompleted(OrderTray tray)
         {
             _completedOrderCount++;
             Log($"Order done [{_completedOrderCount}/{_totalOrderCount}]");
 
+            // ─── FIX ────────────────────────────────────────────────────────────
+            // TRƯỚC: raise AllOrdersCompleted ngay tại đây → Win popup xuất hiện
+            //        trước khi DOPunchScale của tray cuối chạy xong (~0.45f giây).
+            // SAU:   việc check Win đã được chuyển sang OnTrayVisualCompleted,
+            //        chỉ fire sau khi DOPunchScale.OnComplete của CompletedState gọi
+            //        RaiseVisualCompleted(). Mọi logic còn lại không thay đổi.
+            // ────────────────────────────────────────────────────────────────────
+        }
+
+        /// <summary>
+        /// 🆕 Chỉ fire sau khi DOPunchScale của CompletedState hoàn tất.
+        /// Đây là điểm DUY NHẤT raise AllOrdersCompleted → trigger Win flow.
+        /// Không làm gì khác ngoài check điều kiện Win.
+        /// </summary>
+        private void OnTrayVisualCompleted(OrderTray tray)
+        {
             if (_completedOrderCount >= _totalOrderCount && _pendingOrders.Count == 0)
             {
-                Log("ALL ORDERS COMPLETED → WIN!");
+                Log("ALL ORDERS VISUAL DONE → WIN!");
                 EventBus.RaiseAllOrdersCompleted();
             }
         }
@@ -392,6 +403,7 @@ namespace FoodMatch.Order
             if (_pendingOrders.Count > 0) FillActiveSlots();
         }
 
+        // ── EventBus handlers (log only, giữ nguyên) ─────────────────────────
         private void HandleOrderCompleted(int trayIndex) =>
             Log($"[EventBus] OrderCompleted trayIndex={trayIndex}");
 
@@ -406,14 +418,18 @@ namespace FoodMatch.Order
         {
             tray.OnCompleted -= OnTrayCompleted;
             tray.OnLeft -= OnTrayLeft;
+            tray.OnVisualCompleted -= OnTrayVisualCompleted; // 🆕
+
             tray.OnCompleted += OnTrayCompleted;
             tray.OnLeft += OnTrayLeft;
+            tray.OnVisualCompleted += OnTrayVisualCompleted; // 🆕
         }
 
         private void UnsubscribeTray(OrderTray tray)
         {
             tray.OnCompleted -= OnTrayCompleted;
             tray.OnLeft -= OnTrayLeft;
+            tray.OnVisualCompleted -= OnTrayVisualCompleted; // 🆕
         }
 
         private static void ShuffleList<T>(List<T> list)
