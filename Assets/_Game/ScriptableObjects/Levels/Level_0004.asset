@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 361ce6f39e3f10642ba326fd65d82e48, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  levelIndex: 4
+  levelDisplayName: Morning Snack
+  availableFoods:
+  - {fileID: 11400000, guid: b596eb1b196f40d43875093f91dccc44, type: 2}
+  - {fileID: 11400000, guid: d006644d9f959fc4ea0cec786ff0cc40, type: 2}
+  - {fileID: 11400000, guid: 204ce4b5e8cbd7f44841b837aa70d70e, type: 2}
+  totalFoodCount: 39
+  layerCount: 2
+  trayColumns: 4
+  trayRows: 2
+  maxActiveOrders: 2
+  backupTrayCapacity: 5
+  timeLimitSeconds: 0
+  obstacles: []
+  obstaclePreset: {fileID: 0}
+  references:
+    version: 2
+    RefIds: []

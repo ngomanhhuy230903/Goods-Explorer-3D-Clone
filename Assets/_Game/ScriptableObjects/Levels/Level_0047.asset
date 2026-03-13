@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 361ce6f39e3f10642ba326fd65d82e48, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  levelIndex: 47
+  levelDisplayName: Lunch Break
+  availableFoods:
+  - {fileID: 11400000, guid: ea068b17163dde146b15b39834412242, type: 2}
+  - {fileID: 11400000, guid: f973e257b39d2b5409d381c02b2ba426, type: 2}
+  - {fileID: 11400000, guid: bb4cd877240b04443b2f6c7a25bfd65a, type: 2}
+  - {fileID: 11400000, guid: 9cddf89ff4e19a14e882b9635dc24ccd, type: 2}
+  totalFoodCount: 66
+  layerCount: 3
+  trayColumns: 4
+  trayRows: 3
+  maxActiveOrders: 2
+  backupTrayCapacity: 5
+  timeLimitSeconds: 0
+  obstacles:
+  - rid: 8191575228649570943
+  obstaclePreset: {fileID: 0}
+  references:
+    version: 2
+    RefIds:
+    - rid: 8191575228649570943
+      type: {class: LockObstacleData, ns: FoodMatch.Data, asm: Assembly-CSharp}
+      data:
+        isEnabled: 1
+        lockedTrayCount: 1
+        defaultLockHp: 3
+        perTrayHpOverride: 

@@ -88,25 +88,25 @@ namespace FoodMatch.Level
             }
 
             CurrentConfig = config;
-            Debug.Log($"[LevelManager] Load Level {levelIndex}: {config.GetDisplayName()}");
-
             ResetAllSystems();
 
-            // ── Thứ tự init có phụ thuộc — KHÔNG đổi thứ tự ─────────────────
+            InitBackupTray(config);          // 1. Backup tray
+            InitFoodGrid(config);            // 2. Tạo grid (async)
 
-            InitBackupTray(config);   // 1. Backup tray sẵn sàng
-            InitFoodGrid(config);     // 2. Tạo grid (async, callback khi xong)
+            InitOrderQueue(config);          // 3. Sinh SharedFoodList
 
-            InitOrderQueue(config);   // 3. Sinh SharedFoodList — PHẢI trước FoodTraySpawner
-            InitFoodTraySpawner(config); // 4. Đăng ký callback, sẽ lấy SharedFoodList khi grid xong
-
-            InjectFoodFlowController(); // 5. Inject dependencies
-            InitProgressTracker(config); // 6.
+            // 4. Obstacles reserve TRƯỚC — tubes & conveyor rút food ra khỏi SharedFoodList
             obstacleManager?.InitializeObstacles(config);
+
+            // 5. FoodTraySpawner đăng ký callback — khi grid xong sẽ lấy phần CÒN LẠI
+            InitFoodTraySpawner(config);
+
+            InjectFoodFlowController();      // 6.
+            InitProgressTracker(config);     // 7.
+
             GameManager.Instance.ChangeState(GameState.Play);
             Debug.Log($"[LevelManager] Level {levelIndex} sẵn sàng!");
         }
-
         // ─── System Init ──────────────────────────────────────────────────────
 
         private void InitBackupTray(LevelConfig config)
