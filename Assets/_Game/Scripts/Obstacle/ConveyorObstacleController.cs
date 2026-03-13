@@ -10,14 +10,13 @@ namespace FoodMatch.Obstacle
 {
     /// <summary>
     /// Băng chuyền kiểu sushi: N tray nhỏ nối đuôi nhau, di chuyển trái → phải.
-    /// Khi tray ra ngoài màn hình phải → wrap về sau tray trái nhất.
+    /// Khi tray ra ngoài màn hình phải → wrap về bên trái ngoài màn hình.
     ///
-    /// FOOD SOURCE: Lấy từ OrderQueue.SharedFoodList (giống FoodTraySpawner),
-    /// trừ food ra khỏi list trước khi FoodTraySpawner đọc — đảm bảo không bị trùng.
-    ///
-    /// SPEED: anchoredPosition pixels/second — 200 = nhanh rõ rệt.
-    ///
-    /// SPAWN LAYOUT: dàn đều toàn bộ ConveyorArea, khoảng cách = traySpacing.
+    /// FIX:
+    /// 1. Food ngẫu nhiên — shuffle rồi gán round-robin, không bao giờ cùng loại cả hàng.
+    /// 2. Số lượng food = SharedFoodList AFTER conveyor reserve (giống FoodTraySpawner).
+    /// 3. Wrap: tray di chuyển về bên trái ngoài màn hình (entry point), không nhảy giữa chừng.
+    ///    Khoảng cách offscreen được tính theo tổng chiều rộng dải băng chuyền + extraOffscreenPadding.
     /// </summary>
     public class ConveyorObstacleController : ObstacleController<ConveyorObstacleData>
     {
@@ -35,18 +34,26 @@ namespace FoodMatch.Obstacle
         [Tooltip("Y cố định của tất cả tray trong ConveyorArea.")]
         [SerializeField] private float trayPosY = 0f;
 
-        // ─── Runtime ──────────────────────────────────────────────────────────
-        // Dùng List<Entry> thay vì List<ConveyorTray> để giữ thêm posX gốc
-        private readonly List<ConveyorTray> _trays = new List<ConveyorTray>();
-        private Transform _neutralContainer; // tự tạo khi Init, không cần assign
+        [Header("─── Wrap / Offscreen ─────────────────")]
+        [Tooltip("Khoảng cách THÊM ngoài màn hình (pixels) — tính thêm vào tổng chiều rộng belt.\n" +
+                 "Càng lớn → khoảng trống ngoài màn hình càng dài trước khi tray hiện vào.\n" +
+                 "Nên đặt = 1-2 × (trayWidth + traySpacing) để mượt.")]
+        [SerializeField] private float extraOffscreenPadding = 200f;
 
-        private float _trayWidth;   // width thực của 1 tray (từ RectTransform prefab)
-        private float _step;        // _trayWidth + traySpacing
+        // ─── Runtime ──────────────────────────────────────────────────────────
+        private readonly List<ConveyorTray> _trays = new List<ConveyorTray>();
+        private Transform _neutralContainer;
+
+        private float _trayWidth;
+        private float _step;          // _trayWidth + traySpacing
         private float _speed;
 
-        // Bounds (anchoredPosition.x trong ConveyorArea local space)
-        // Tray vượt _exitX → wrap về trước tray trái nhất
-        private float _exitX;
+        // Bounds trong ConveyorArea local space (anchoredPosition.x)
+        private float _exitX;        // tray vượt qua → wrap (phía PHẢI)
+        private float _entryX;       // tray được đặt tại đây khi wrap (phía TRÁI, ngoài màn hình)
+
+        // Tổng chiều rộng của toàn bộ belt (dùng để tính _entryX đúng)
+        private float _beltTotalWidth;
 
         private bool _isRunning;
 
@@ -59,13 +66,11 @@ namespace FoodMatch.Obstacle
 
             _speed = data.speed;
 
-            // Tạo container riêng để chứa FoodItem 3D trong world space
-            // Đặt dưới ConveyorObstacleController để Hierarchy gọn
+            // NeutralContainer cho FoodItem 3D
             if (_neutralContainer == null)
             {
                 var go = new GameObject("ConveyorFoodContainer");
                 go.transform.SetParent(transform, false);
-                // Reset về world zero để food spawn đúng world position
                 go.transform.localPosition = Vector3.zero;
                 go.transform.localRotation = Quaternion.identity;
                 go.transform.localScale = Vector3.one;
@@ -77,10 +82,20 @@ namespace FoodMatch.Obstacle
             _trayWidth = (rt != null && rt.rect.width > 0f) ? rt.rect.width : 120f;
             _step = _trayWidth + traySpacing;
 
-            // Tray vượt nửa tray ra ngoài phải → wrap
+            int count = data.conveyorCount;
+            _beltTotalWidth = count * _trayWidth + (count - 1) * traySpacing;
+
+            // Exit: nửa tray vượt qua cạnh phải của ConveyorArea
             _exitX = conveyorArea.rect.width * 0.5f + _trayWidth * 0.5f;
 
-            // Lấy food từ SharedFoodList và reserve trước
+            // Entry: điểm bên trái ngoài màn hình — cách cạnh trái đủ xa để tray chưa thấy được
+            // = -(half area width) - (half tray) - extraOffscreenPadding
+            // Công thức: mỗi tray sau khi wrap cần xếp đằng sau tray trái nhất 1 _step.
+            // Ta giữ logic tìm minX rồi trừ _step — nhưng bổ sung _entryX là fallback cap
+            // để không bao giờ wrap vào giữa màn hình.
+            _entryX = -(conveyorArea.rect.width * 0.5f + _trayWidth * 0.5f + extraOffscreenPadding);
+
+            // Lấy food từ SharedFoodList (sau khi conveyor đã reserve)
             var foodList = ReserveAndBuildFoodList(data);
             if (foodList == null || foodList.Count == 0)
             {
@@ -88,10 +103,14 @@ namespace FoodMatch.Obstacle
                 return;
             }
 
+            // Shuffle để food ngẫu nhiên
+            ShuffleList(foodList);
+
             SpawnAllTrays(data, foodList);
 
             _isRunning = true;
-            Debug.Log($"[Conveyor] Init — {data.conveyorCount} trays × {data.foodPerConveyor} food, speed={data.speed}");
+            Debug.Log($"[Conveyor] Init — {data.conveyorCount} trays × {data.foodPerConveyor} food, " +
+                      $"speed={data.speed}, exitX={_exitX:F1}, entryX={_entryX:F1}");
         }
 
         protected override void OnReset()
@@ -144,7 +163,7 @@ namespace FoodMatch.Obstacle
                 if (tray == null) continue;
                 if (tray.RectTransform.anchoredPosition.x < _exitX) continue;
 
-                // Tìm X nhỏ nhất trong các tray còn lại
+                // Tìm X nhỏ nhất trong các tray còn lại (tray trái nhất)
                 float minX = float.MaxValue;
                 for (int j = 0; j < _trays.Count; j++)
                 {
@@ -153,10 +172,24 @@ namespace FoodMatch.Obstacle
                     if (x < minX) minX = x;
                 }
 
-                // Nối đuôi phía trái — cộng thêm delta để không lag 1 frame
-                float newX = (minX < float.MaxValue)
-                    ? minX - _step
-                    : -_exitX; // fallback nếu chỉ có 1 tray
+                // Đặt tray sau tray trái nhất, ngoài màn hình bên trái
+                // Giữ cộng delta để không lag 1 frame
+                float newX;
+                if (minX < float.MaxValue)
+                {
+                    // Nối đuôi phía trái
+                    newX = minX - _step;
+
+                    // Đảm bảo newX không bao giờ nằm trong màn hình (tránh nhảy vào giữa)
+                    float leftEdge = -(conveyorArea.rect.width * 0.5f + _trayWidth * 0.5f);
+                    if (newX > leftEdge)
+                        newX = leftEdge - extraOffscreenPadding;
+                }
+                else
+                {
+                    // Fallback: chỉ 1 tray duy nhất → đặt về _entryX
+                    newX = _entryX;
+                }
 
                 tray.RectTransform.anchoredPosition = new Vector2(newX, trayPosY);
             }
@@ -168,20 +201,41 @@ namespace FoodMatch.Obstacle
         {
             int count = data.conveyorCount;
 
-            // Dàn đều trong ConveyorArea — giống OrderArea
+            // Dàn đều trong ConveyorArea
             float totalWidth = count * _trayWidth + (count - 1) * traySpacing;
             float startX = -totalWidth * 0.5f + _trayWidth * 0.5f;
 
             for (int i = 0; i < count; i++)
             {
                 float posX = startX + i * _step;
-                var food = foodList[i % foodList.Count];
+
+                // ─── FIX: round-robin qua foodList đã shuffle → food ngẫu nhiên ───
+                // Mỗi tray lấy food theo index mod Count, không lặp cùng loại cả hàng
+                var trayFoodList = BuildTrayFoodList(foodList, i, data.foodPerConveyor);
+
                 float delay = i * 0.06f;
-                SpawnOneTray(food, data.foodPerConveyor, posX, delay);
+                SpawnOneTray(trayFoodList, data.foodPerConveyor, posX, delay);
             }
         }
 
-        private void SpawnOneTray(FoodItemData food, int foodPerConveyor,
+        /// <summary>
+        /// Lấy danh sách food cho 1 tray bằng cách round-robin qua foodList đã shuffle.
+        /// Tray i lấy food ở index (i * foodPerConveyor + j) % foodList.Count.
+        /// </summary>
+        private List<FoodItemData> BuildTrayFoodList(List<FoodItemData> foodList,
+                                                     int trayIndex, int foodPerConveyor)
+        {
+            var result = new List<FoodItemData>(foodPerConveyor);
+            int baseIdx = trayIndex * foodPerConveyor;
+            for (int j = 0; j < foodPerConveyor; j++)
+            {
+                int idx = (baseIdx + j) % foodList.Count;
+                result.Add(foodList[idx]);
+            }
+            return result;
+        }
+
+        private void SpawnOneTray(List<FoodItemData> trayFoods, int foodPerConveyor,
                                   float posX, float slideDelay)
         {
             GameObject go = PoolManager.Instance != null
@@ -198,20 +252,20 @@ namespace FoodMatch.Obstacle
 
             if (tray is IPoolable p) p.OnSpawn();
 
-            // Đặt vào đúng posX ngay — slide vào từ trên (giống OrderTray Enter)
+            // Bắt đầu từ trên (slide xuống giống OrderTray)
             tray.RectTransform.anchoredPosition = new Vector2(posX, trayPosY + 280f);
 
-            // neutralContainer cần thiết để FoodItem sống đúng world space
             if (_neutralContainer == null)
             {
                 Debug.LogError("[Conveyor] _neutralContainer null!");
                 Destroy(go);
-                _trays.Remove(tray);
                 return;
             }
-            tray.Initialize(food, foodPerConveyor, _neutralContainer);
 
-            // Slide xuống đúng Y, giữ nguyên X (không DOAnchorPos vì controller sẽ update X)
+            // ─── FIX: truyền danh sách food ngẫu nhiên thay vì 1 FoodItemData duy nhất ───
+            tray.InitializeWithList(trayFoods, foodPerConveyor, _neutralContainer);
+
+            // Slide xuống đúng Y
             tray.RectTransform
                 .DOAnchorPosY(trayPosY, 0.4f)
                 .SetEase(Ease.OutBack)
@@ -221,13 +275,12 @@ namespace FoodMatch.Obstacle
             _trays.Add(tray);
         }
 
-        // ─── Food Source — reserve từ SharedFoodList ──────────────────────────
+        // ─── Food Source ──────────────────────────────────────────────────────
 
         /// <summary>
-        /// Reserve food từ OrderQueue bằng ConsumeFoodForTubes() —
-        /// giống TubeObstacleController, XÓA food khỏi _canonicalFoodList
-        /// để FoodTraySpawner không spawn trùng lên grid.
-        /// Gọi TRƯỚC khi FoodTraySpawner.SpawnFood().
+        /// Reserve food từ OrderQueue (giống TubeObstacleController).
+        /// XÓA food khỏi SharedFoodList để FoodTraySpawner không spawn trùng.
+        /// Số lượng = data.conveyorCount (mỗi tray 1 loại food, nhân foodPerConveyor khi hiển thị).
         /// </summary>
         private List<FoodItemData> ReserveAndBuildFoodList(ConveyorObstacleData data)
         {
@@ -237,7 +290,7 @@ namespace FoodMatch.Obstacle
                 return new List<FoodItemData>();
             }
 
-            // ConsumeFoodForTubes() đã handle shuffle + RemoveAt nội bộ trên List<>
+            // Reserve đúng conveyorCount items — mỗi tray sẽ tự round-robin
             var result = OrderQueue.Instance.ConsumeFoodForTubes(data.conveyorCount);
 
             if (result == null || result.Count == 0)
@@ -249,12 +302,19 @@ namespace FoodMatch.Obstacle
             return result ?? new List<FoodItemData>();
         }
 
+        // ─── Helpers ──────────────────────────────────────────────────────────
+
+        private static void ShuffleList<T>(List<T> list)
+        {
+            for (int i = list.Count - 1; i > 0; i--)
+            {
+                int j = Random.Range(0, i + 1);
+                (list[i], list[j]) = (list[j], list[i]);
+            }
+        }
+
         // ─── Public API ───────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Gọi sau khi FoodFlowController xử lý xong 1 food từ conveyor.
-        /// Nếu tray hết food hoàn toàn → remove khỏi update list.
-        /// </summary>
         public void NotifyFoodTaken(ConveyorTray tray)
         {
             if (tray == null) return;

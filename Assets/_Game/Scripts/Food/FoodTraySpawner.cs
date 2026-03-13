@@ -1,10 +1,4 @@
-﻿// FoodTraySpawner.cs  (updated — tích hợp TubeObstacleController)
-// THAY ĐỔI SO VỚI BẢN CŨ:
-//   • SpawnFood() giờ gọi TubeObstacleController.InitializeObstacles() trước
-//     để tube reserve food ra khỏi SharedFoodList TRƯỚC KHI tray đọc list đó.
-//   • Không cần thay đổi logic DistributeToTrays — SharedFoodList đã ít hơn
-//     nên tray tự nhiên spawn ít hơn tương ứng.
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using FoodMatch.Data;
 using FoodMatch.Order;

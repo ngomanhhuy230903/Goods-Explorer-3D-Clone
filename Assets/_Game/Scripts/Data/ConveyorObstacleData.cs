@@ -17,16 +17,16 @@ namespace FoodMatch.Data
 
         [Header("Conveyor Settings")]
         [Tooltip("Số lượng băng chuyền nhỏ (mỗi cái chứa 1 food).")]
-        [Min(1)]
+        [Range(5,10)]
         public int conveyorCount = 4;
 
         [Tooltip("Số food trên mỗi băng chuyền.")]
-        [Min(1)]
-        public int foodPerConveyor = 1;
+        [Range(3, 6)]
+        public int foodPerConveyor = 3;
 
         [Tooltip("Tốc độ di chuyển của băng chuyền (units/second).")]
-        [Min(0.1f)]
-        public float speed = 2f;
+        [Range(20, 80)]
+        public float speed = 40f;
 
         /// <summary>Tổng số food trên tất cả băng chuyền.</summary>
         public int TotalFoodCount => conveyorCount * foodPerConveyor;
