@@ -3440,6 +3440,7 @@ MonoBehaviour:
     type: 3}
   traySpacing: 30
   trayPosY: 0
+  extraOffscreenPadding: 100
 --- !u!4 &1214467519
 Transform:
   m_ObjectHideFlags: 0

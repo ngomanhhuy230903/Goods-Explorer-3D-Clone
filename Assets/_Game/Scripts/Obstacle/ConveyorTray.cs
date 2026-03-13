@@ -10,22 +10,21 @@ namespace FoodMatch.Obstacle
 {
     /// <summary>
     /// Một băng chuyền nhỏ — container UI 2D chứa FoodItem 3D.
-    /// Vị trí được ConveyorObstacleController update mỗi frame.
     ///
-    /// FIX: Thêm InitializeWithList() để nhận List food ngẫu nhiên thay vì 1 FoodItemData.
-    ///   → Mỗi tray có thể chứa các loại food khác nhau.
-    ///   → Animation spawn giống hệt FoodTray.SpawnFoodItem().
+    /// FIX — InitializeWithList() trả về float = thời điểm animation kết thúc
+    ///   (delay + duration của food cuối cùng). Controller dùng giá trị này
+    ///   để biết chờ bao lâu trước khi bật belt.
+    ///
+    /// Animation: food spawn scale 0→1 TẠI anchor — không di chuyển vị trí.
     /// </summary>
     [RequireComponent(typeof(RectTransform))]
     public class ConveyorTray : MonoBehaviour, IPoolable
     {
         // ─── Inspector ────────────────────────────────────────────────────────
         [Header("─── Layer 0 Anchors (Active) ─────────")]
-        [Tooltip("Tối đa 3 empty child — anchor cho FoodItem layer 0.")]
         [SerializeField] private List<Transform> layer0Anchors = new List<Transform>(3);
 
         [Header("─── Layer 1 Anchors (Greyed) ─────────")]
-        [Tooltip("Tối đa 3 empty child — anchor cho FoodItem layer 1.")]
         [SerializeField] private List<Transform> layer1Anchors = new List<Transform>(3);
 
         // ─── Runtime ──────────────────────────────────────────────────────────
@@ -38,8 +37,10 @@ namespace FoodMatch.Obstacle
         private readonly List<FoodItem> _layer1 = new List<FoodItem>();
         private readonly Dictionary<FoodItem, Transform> _anchorMap = new Dictionary<FoodItem, Transform>();
 
-        private FoodItemData _foodData;  // kept for legacy compat (single-food Initialize)
         private Transform _neutralContainer;
+
+        private const float SpawnDuration = 0.3f;   // giống FoodTray
+        private const float FoodStagger = 0.04f;  // giống FoodTray
 
         // ─────────────────────────────────────────────────────────────────────
         private void Awake() => RectTransform = GetComponent<RectTransform>();
@@ -60,54 +61,56 @@ namespace FoodMatch.Obstacle
         // ─── Public API ───────────────────────────────────────────────────────
 
         /// <summary>
-        /// [LEGACY] Khởi tạo với 1 loại food duy nhất cho toàn tray.
-        /// Giữ lại để tương thích — khuyên dùng InitializeWithList().
+        /// [LEGACY] Giữ tương thích — gọi InitializeWithList() bên trong.
         /// </summary>
-        public void Initialize(FoodItemData foodData, int foodPerConveyor,
-                               Transform neutralContainer)
+        public float Initialize(FoodItemData foodData, int foodPerConveyor,
+                                Transform neutralContainer, float baseDelay = 0f)
         {
             var list = new List<FoodItemData>();
-            for (int i = 0; i < foodPerConveyor; i++)
-                list.Add(foodData);
-            InitializeWithList(list, foodPerConveyor, neutralContainer);
+            for (int i = 0; i < foodPerConveyor; i++) list.Add(foodData);
+            return InitializeWithList(list, foodPerConveyor, neutralContainer, baseDelay);
         }
 
         /// <summary>
-        /// [NEW] Khởi tạo với danh sách food ngẫu nhiên — mỗi slot có thể khác loại.
-        /// foodList.Count có thể ít hơn foodPerConveyor → wrap round-robin.
-        /// Animation spawn giống hệt FoodTray.SpawnFoodItem().
+        /// Khởi tạo với danh sách food ngẫu nhiên.
+        /// baseDelay: delay cộng thêm cho tray này (stagger theo thứ tự tray).
+        ///
+        /// RETURN: thời điểm animation kết thúc = delay của food cuối + SpawnDuration.
+        ///   Controller dùng giá trị này để chờ trước khi bật belt.
         /// </summary>
-        public void InitializeWithList(List<FoodItemData> foodList, int foodPerConveyor,
-                                       Transform neutralContainer)
+        public float InitializeWithList(List<FoodItemData> foodList, int foodPerConveyor,
+                                        Transform neutralContainer, float baseDelay = 0f)
         {
             _neutralContainer = neutralContainer;
-
-            // FoodID = loại food đầu tiên (dùng cho backward compat check)
             FoodID = (foodList != null && foodList.Count > 0 && foodList[0] != null)
-                ? foodList[0].foodID
-                : -1;
-            _foodData = (foodList != null && foodList.Count > 0) ? foodList[0] : null;
+                ? foodList[0].foodID : -1;
 
-            if (foodList == null || foodList.Count == 0) return;
+            if (foodList == null || foodList.Count == 0) return baseDelay;
 
             int l0 = Mathf.Min(foodPerConveyor, layer0Anchors.Count);
             int l1 = Mathf.Min(foodPerConveyor - l0, layer1Anchors.Count);
+            int totalFood = l0 + l1;
 
             for (int i = 0; i < l0; i++)
             {
-                // Round-robin qua foodList để mỗi slot có thể khác loại
-                var food = foodList[i % foodList.Count];
-                SpawnFoodItem(food, layer0Anchors[i], layerIdx: 0, delay: i * 0.05f);
+                float delay = baseDelay + i * FoodStagger;
+                SpawnFoodItem(foodList[i % foodList.Count], layer0Anchors[i],
+                              layerIdx: 0, delay: delay);
             }
             for (int i = 0; i < l1; i++)
             {
-                var food = foodList[(l0 + i) % foodList.Count];
-                SpawnFoodItem(food, layer1Anchors[i], layerIdx: 1, delay: (l0 + i) * 0.05f);
+                float delay = baseDelay + (l0 + i) * FoodStagger;
+                SpawnFoodItem(foodList[(l0 + i) % foodList.Count], layer1Anchors[i],
+                              layerIdx: 1, delay: delay);
             }
+
+            // Thời điểm kết thúc = delay của food cuối cùng + duration scale
+            float lastDelay = baseDelay + (totalFood - 1) * FoodStagger;
+            return lastDelay + SpawnDuration;
         }
 
         /// <summary>
-        /// Giống FoodTray.TryPopItem() — gọi bởi FoodFlowController.HandleFoodTapped().
+        /// Giống FoodTray.TryPopItem().
         /// </summary>
         public FoodItem TryPopItem(FoodItem item)
         {
@@ -131,16 +134,13 @@ namespace FoodMatch.Obstacle
                 IsCollected = true;
 
             transform.DOPunchScale(Vector3.one * 0.15f, 0.25f, 4, 0.4f).SetUpdate(true);
-
             return item;
         }
 
-        /// <summary>Reset khi trả về pool.</summary>
         public void ResetTray()
         {
             IsCollected = false;
             FoodID = -1;
-            _foodData = null;
             _neutralContainer = null;
             DOTween.Kill(gameObject);
             transform.localScale = Vector3.one;
@@ -148,6 +148,8 @@ namespace FoodMatch.Obstacle
         }
 
         // ─── Spawn — giống hệt FoodTray.SpawnFoodItem() ──────────────────────
+        // Food spawn TẠI anchor.position, scale 0 → prefabScale.
+        // Không có chuyển động vị trí → không bị "bay từ trên xuống".
 
         private void SpawnFoodItem(FoodItemData data, Transform anchor,
                                    int layerIdx, float delay)
@@ -164,7 +166,6 @@ namespace FoodMatch.Obstacle
             GameObject go = PoolManager.Instance.GetFood(data.foodID, anchor.position);
             if (go == null) return;
 
-            // Đặt vào neutralContainer — world position = anchor.position (giống FoodTray)
             go.transform.SetParent(_neutralContainer, worldPositionStays: true);
             go.transform.position = anchor.position;
             go.transform.localScale = Vector3.zero;
@@ -176,7 +177,7 @@ namespace FoodMatch.Obstacle
             FoodItem item = go.GetComponent<FoodItem>();
             if (item == null)
             {
-                Debug.LogError($"[ConveyorTray] FoodItem missing trên {data.foodName}!");
+                Debug.LogError($"[ConveyorTray] FoodItem missing: {data.foodName}");
                 PoolManager.Instance.ReturnFood(data.foodID, go);
                 return;
             }
@@ -184,7 +185,6 @@ namespace FoodMatch.Obstacle
             item.Initialize(data, layerIdx);
             item.SetAnchorRef(anchor);
 
-            // ConveyorFoodOwner để FoodInteractionHandler biết gọi đúng TryPopItem
             var owner = go.GetComponent<ConveyorFoodOwner>();
             if (owner == null) owner = go.AddComponent<ConveyorFoodOwner>();
             owner.OwnerConveyorTray = this;
@@ -192,21 +192,21 @@ namespace FoodMatch.Obstacle
             _anchorMap[item] = anchor;
             if (layerIdx == 0) _layer0.Add(item); else _layer1.Add(item);
 
-            // Pop-in animation giống FoodTray — scale từ 0 → prefabScale
             Vector3 targetScale = layerIdx == 0 ? prefabScale : prefabScale * 0.8f;
             go.transform
-                .DOScale(targetScale, 0.3f)
+                .DOScale(targetScale, SpawnDuration)
                 .SetDelay(delay)
                 .SetEase(Ease.OutBack)
                 .SetUpdate(false)
                 .OnComplete(() =>
                 {
                     if (go == null || follower == null) return;
+                    // Follow anchor BẮT ĐẦU sau khi scale xong
                     follower.Follow(anchor);
                 });
         }
 
-        // ─── Promote Layer 1 → Layer 0 — giống FoodTray.PromoteLayer1ToLayer0() ──
+        // ─── Promote Layer 1 → Layer 0 ───────────────────────────────────────
 
         private void PromoteLayer1ToLayer0()
         {
@@ -224,14 +224,12 @@ namespace FoodMatch.Obstacle
                     ? layer0Anchors[i]
                     : layer0Anchors[layer0Anchors.Count - 1];
 
-                SlotFollower follower = item.GetComponent<SlotFollower>();
-                follower?.Unfollow();
+                item.GetComponent<SlotFollower>()?.Unfollow();
 
                 FoodItem capturedItem = item;
                 Transform capturedAnchor = targetAnchor;
                 Vector3 prefabScale = item.Data?.prefab != null
-                                           ? item.Data.prefab.transform.localScale
-                                           : Vector3.one;
+                    ? item.Data.prefab.transform.localScale : Vector3.one;
 
                 item.transform
                     .DOMove(targetAnchor.position, 0.3f)
@@ -242,7 +240,6 @@ namespace FoodMatch.Obstacle
                         if (capturedItem == null) return;
                         capturedItem.transform.localScale = prefabScale;
                         _anchorMap[capturedItem] = capturedAnchor;
-
                         var f = capturedItem.GetComponent<SlotFollower>();
                         if (f == null) f = capturedItem.gameObject.AddComponent<SlotFollower>();
                         f.Follow(capturedAnchor);
@@ -276,10 +273,6 @@ namespace FoodMatch.Obstacle
     }
 
     // ─── Marker component ─────────────────────────────────────────────────────
-    /// <summary>
-    /// Đánh dấu FoodItem này thuộc ConveyorTray — để FoodInteractionHandler
-    /// biết gọi TryPopItem() trên ConveyorTray thay vì OwnerTray.
-    /// </summary>
     public class ConveyorFoodOwner : MonoBehaviour
     {
         public ConveyorTray OwnerConveyorTray;
