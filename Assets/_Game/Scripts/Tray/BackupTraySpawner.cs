@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using DG.Tweening;
@@ -91,15 +92,16 @@ namespace FoodMatch.Tray
         /// <summary>
         /// Thêm 1 slot mới (Booster +1 Khay).
         /// Block input → shift slot cũ + di chuyển food → scale-in slot mới → unblock input.
+        /// onComplete được gọi SAU KHI toàn bộ animation kết thúc.
         /// </summary>
-        public void AddExtraSlot()
+        public void AddExtraSlot(Action onComplete = null)
         {
-            StartCoroutine(AddExtraSlotRoutine());
+            StartCoroutine(AddExtraSlotRoutine(onComplete));
         }
 
         // ─── Core Routine ─────────────────────────────────────────────────────
 
-        private IEnumerator AddExtraSlotRoutine()
+        private IEnumerator AddExtraSlotRoutine(Action onComplete)
         {
             // ── 1. Block input ngay lập tức ──────────────────────────────────
             InputBlocker.Block("BackupTrayExpand");
@@ -126,9 +128,7 @@ namespace FoodMatch.Tray
                 // Tween food nếu slot này đang có food
                 if (occupants.TryGetValue(i, out var food) && food != null)
                 {
-                    // Kill DOTween cũ trên food để tránh conflict
                     food.transform.DOKill();
-
                     Tween foodTween = food.transform
                         .DOMove(targetWorldPos, shiftDuration)
                         .SetEase(Ease.OutCubic);
@@ -137,7 +137,6 @@ namespace FoodMatch.Tray
             }
 
             // ── 3. Chờ tất cả shift xong ─────────────────────────────────────
-            // Dùng yield trên sequence thay vì WaitForSeconds để đảm bảo đúng duration
             if (tweens.Count > 0)
                 yield return tweens[0].WaitForCompletion();
             else
@@ -166,6 +165,9 @@ namespace FoodMatch.Tray
             InputBlocker.Unblock("BackupTrayExpand");
 
             Debug.Log($"[BackupTraySpawner] Thêm slot. Tổng: {_activeSlotAnchors.Count}");
+
+            // ── 7. Báo caller đã xong ─────────────────────────────────────────
+            onComplete?.Invoke();
         }
 
         // ─── Spawn / Pool Logic ───────────────────────────────────────────────
@@ -192,16 +194,11 @@ namespace FoodMatch.Tray
 
         private void ClearAllSlots()
         {
-            // ReturnAll trả về pool và clear list (theo API ObjectPool của bạn)
             _slotPool.ReturnAll(_activeSlotAnchors);
         }
 
         // ─── Layout ───────────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Tính LOCAL position căn giữa quanh pivot của SlotAnchors_Container.
-        /// Dùng local space để tránh bị ảnh hưởng bởi Canvas world scale.
-        /// </summary>
         private Vector3 CalculateSlotLocalPos(int index, int totalCount)
         {
             float totalWidth = (totalCount - 1) * slotSpacingX;
