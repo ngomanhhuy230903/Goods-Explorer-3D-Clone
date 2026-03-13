@@ -40,4 +40,4 @@ MonoBehaviour:
         isEnabled: 1
         conveyorCount: 5
         foodPerConveyor: 3
-        speed: 40
+        speed: 20

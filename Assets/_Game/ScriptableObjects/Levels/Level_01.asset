@@ -26,15 +26,15 @@ MonoBehaviour:
   backupTrayCapacity: 5
   timeLimitSeconds: 0
   obstacles:
-  - rid: 8191575228649570307
+  - rid: 8191575228649570308
   obstaclePreset: {fileID: 11400000, guid: f802829436ee2ef4b89d2234143bc16b, type: 2}
   references:
     version: 2
     RefIds:
-    - rid: 8191575228649570307
+    - rid: 8191575228649570308
       type: {class: ConveyorObstacleData, ns: FoodMatch.Data, asm: Assembly-CSharp}
       data:
         isEnabled: 1
-        conveyorCount: 10
-        foodPerConveyor: 6
-        speed: 80
+        conveyorCount: 5
+        foodPerConveyor: 3
+        speed: 20

@@ -36,7 +36,7 @@ namespace FoodMatch.Editor
         private int _lockCount = 1;
         private int _lockHp = 3;
         private bool _useHpOverride;
-        private string _hpOverrideRaw = ""; // "3,5,2" → parse thành int[]
+        private string _hpOverrideRaw = "";
 
         // Tube fields
         private int _tubeCount = 2;
@@ -44,8 +44,9 @@ namespace FoodMatch.Editor
         private bool _useTubeFoodOverride;
         private string _tubeFoodOverrideRaw = "";
 
-        // Conveyor fields
-        private int _conveyorFood = 6;
+        // Conveyor fields — phiên bản mới: conveyorCount + foodPerConveyor + speed
+        private int _conveyorCount = 3;
+        private int _conveyorFoodPerTray = 2;
         private float _conveyorSpeed = 2f;
 
         // ─── Tab 3: Overview ──────────────────────────────────────────────────
@@ -61,7 +62,6 @@ namespace FoodMatch.Editor
         {
             EditorGUILayout.Space(4);
 
-            // ── Database field (luôn hiển thị) ────────────────────────────────
             _database = (LevelDatabase)EditorGUILayout.ObjectField(
                 "Level Database", _database, typeof(LevelDatabase), false);
 
@@ -74,7 +74,6 @@ namespace FoodMatch.Editor
 
             EditorGUILayout.Space(4);
 
-            // ── Tabs ──────────────────────────────────────────────────────────
             _currentTab = (Tab)GUILayout.Toolbar((int)_currentTab,
                 new[] { "Apply Preset", "Quick Range", "Overview" });
 
@@ -160,13 +159,11 @@ namespace FoodMatch.Editor
 
             EditorGUILayout.Space(4);
 
-            // ── Loại obstacle ─────────────────────────────────────────────────
             _kind = (ObstacleKind)EditorGUILayout.EnumPopup("Obstacle Type", _kind);
             _enableObstacle = EditorGUILayout.Toggle("isEnabled", _enableObstacle);
 
             EditorGUILayout.Space(4);
 
-            // ── Fields theo loại ──────────────────────────────────────────────
             switch (_kind)
             {
                 case ObstacleKind.Lock: DrawLockFields(); break;
@@ -261,8 +258,32 @@ namespace FoodMatch.Editor
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.LabelField("🎢 Conveyor Settings", EditorStyles.boldLabel);
-            _conveyorFood = EditorGUILayout.IntSlider("foodCount", _conveyorFood, 1, 30);
-            _conveyorSpeed = EditorGUILayout.Slider("speed", _conveyorSpeed, 0.1f, 10f);
+
+            // ── conveyorCount: số lượng tray trên băng chuyền ─────────────────
+            _conveyorCount = EditorGUILayout.IntSlider(
+                new GUIContent("conveyorCount",
+                    "Số lượng băng chuyền nhỏ (tray) trên belt."),
+                _conveyorCount, 5, 10);
+
+            // ── foodPerConveyor: số food trên mỗi tray ────────────────────────
+            _conveyorFoodPerTray = EditorGUILayout.IntSlider(
+                new GUIContent("foodPerConveyor",
+                    "Số food trên mỗi tray băng chuyền.\n" +
+                    "Tổng food reserved = conveyorCount × foodPerConveyor."),
+                _conveyorFoodPerTray, 1, 6);
+
+            // ── Hiển thị tổng food sẽ bị reserve ─────────────────────────────
+            int totalReserved = _conveyorCount * _conveyorFoodPerTray;
+            EditorGUILayout.HelpBox(
+                $"Tổng food reserved từ SharedFoodList: {_conveyorCount} × {_conveyorFoodPerTray} = {totalReserved}\n" +
+                "Food còn lại = totalFood − " + totalReserved + " → spawn ở FoodTray.",
+                MessageType.None);
+
+            // ── speed ─────────────────────────────────────────────────────────
+            _conveyorSpeed = EditorGUILayout.Slider(
+                new GUIContent("speed", "Tốc độ di chuyển belt (pixels/giây)."),
+                _conveyorSpeed, 20, 80);
+
             EditorGUILayout.EndVertical();
         }
 
@@ -300,7 +321,8 @@ namespace FoodMatch.Editor
                         {
                             var data = GetOrCreate<ConveyorObstacleData>(lvl);
                             data.isEnabled = _enableObstacle;
-                            data.conveyorCount = _conveyorFood;
+                            data.conveyorCount = _conveyorCount;       // số tray
+                            data.foodPerConveyor = _conveyorFoodPerTray; // food / tray
                             data.speed = _conveyorSpeed;
                             break;
                         }
@@ -340,8 +362,11 @@ namespace FoodMatch.Editor
             }
             if (_overviewConveyor)
             {
-                EditorGUILayout.LabelField("Conv.", EditorStyles.toolbarButton, GUILayout.Width(40));
-                EditorGUILayout.LabelField("Speed", EditorStyles.toolbarButton, GUILayout.Width(50));
+                // ── Cột mới: hiển thị cả Count, Food/Tray, Speed, Total reserved ──
+                EditorGUILayout.LabelField("Trays", EditorStyles.toolbarButton, GUILayout.Width(40));
+                EditorGUILayout.LabelField("Food/Tray", EditorStyles.toolbarButton, GUILayout.Width(65));
+                EditorGUILayout.LabelField("Reserved", EditorStyles.toolbarButton, GUILayout.Width(65));
+                EditorGUILayout.LabelField("Speed", EditorStyles.toolbarButton, GUILayout.Width(45));
             }
             EditorGUILayout.EndHorizontal();
 
@@ -353,7 +378,6 @@ namespace FoodMatch.Editor
                 var tubeData = lvl.GetObstacle<TubeObstacleData>();
                 var conveyorData = lvl.GetObstacle<ConveyorObstacleData>();
 
-                // Tô màu row có obstacle
                 bool hasAny = lockData != null || tubeData != null || conveyorData != null;
                 if (hasAny) GUI.backgroundColor = new Color(0.85f, 1f, 0.85f);
 
@@ -382,15 +406,29 @@ namespace FoodMatch.Editor
                 }
                 if (_overviewConveyor)
                 {
+                    // Trays (conveyorCount)
                     EditorGUILayout.LabelField(
-                        conveyorData != null ? "ON" : "-",
+                        conveyorData != null ? $"{conveyorData.conveyorCount}" : "-",
                         GUILayout.Width(40));
+
+                    // Food per tray (foodPerConveyor)
+                    EditorGUILayout.LabelField(
+                        conveyorData != null ? $"{conveyorData.foodPerConveyor}" : "-",
+                        GUILayout.Width(65));
+
+                    // Total reserved = conveyorCount × foodPerConveyor
+                    EditorGUILayout.LabelField(
+                        conveyorData != null
+                            ? $"{conveyorData.TotalFoodCount}"
+                            : "-",
+                        GUILayout.Width(65));
+
+                    // Speed
                     EditorGUILayout.LabelField(
                         conveyorData != null ? $"{conveyorData.speed:F1}" : "-",
-                        GUILayout.Width(50));
+                        GUILayout.Width(45));
                 }
 
-                // Nút ping để select LevelConfig trong Project
                 if (GUILayout.Button("Select", EditorStyles.miniButton, GUILayout.Width(50)))
                     EditorGUIUtility.PingObject(lvl);
 
