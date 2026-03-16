@@ -10,31 +10,11 @@ using System.Collections;
 
 namespace FoodMatch.UI
 {
-    /// <summary>
-    /// Gắn vào GameObject "GameResultUI" — con của MainCanvas.
-    ///
-    /// ══ WIN FLOW ══
-    ///   Overlay → PopupWin
-    ///     • Title text
-    ///     • Coin reward text  (+N)
-    ///     • [x2 Ads]   → DoubleWinReward() → GoHome luôn
-    ///     • [Next Level] → LoadNextLevel() → GoHome luôn
-    ///
-    /// ══ LOSE FLOW ══
-    ///   Overlay → LosePopup1 (Revive cơ hội 1)
-    ///     • [Dùng vàng]  → TryRevive() → ClearTrayBooster.Execute() → resume Play
-    ///     • [Xem Ads]    → ClearTrayBooster.Execute() → resume Play (miễn phí)
-    ///     • [Đóng]       → ẩn P1, hiện LosePopup2
-    ///   LosePopup2 (Revive cơ hội 2)
-    ///     • [Dùng vàng]  → TryRevive() → ClearTrayBooster.Execute() → resume Play
-    ///     • [Xem Ads]    → ClearTrayBooster.Execute() → resume Play (miễn phí)
-    ///     • [Đóng]       → ẩn P2, hiện LosePopup3
-    ///   LosePopup3 (Final)
-    ///     • [Retry]      → RestartCurrentLevel()
-    ///     • [Đóng]       → fade loading → GameState.Menu
-    /// </summary>
     public class GameResultUI : MonoBehaviour
     {
+        // ─── Singleton ────────────────────────────────────────────────────────
+        public static GameResultUI Instance { get; private set; }
+
         // ═══════════════════════════════════════════════════════════════════════
         // INSPECTOR
         // ═══════════════════════════════════════════════════════════════════════
@@ -47,22 +27,21 @@ namespace FoodMatch.UI
         // ── WIN ───────────────────────────────────────────────────────────────
         [Header("─── Win: Popup ──────────────────────")]
         [SerializeField] private GameObject popupWin;
-        [SerializeField] private TMP_Text winTitleText;        // "Hoàn thành!" / tùy
-        [SerializeField] private TMP_Text winCoinRewardText;   // "+50"
+        [SerializeField] private TMP_Text winTitleText;
+        [SerializeField] private TMP_Text winCoinRewardText;
         [SerializeField] private Button winBtn_NextLevel;
 
         [Header("─── Win: Double Reward ─────────────")]
-        [Tooltip("1 button x2 Ads. Sau khi click (hoặc next level) → GoHome luôn.")]
-        [SerializeField] private TMP_Text winDoubleRewardText; // "+100" (= reward × mult)
+        [SerializeField] private TMP_Text winDoubleRewardText;
         [SerializeField] private Button winBtn_DoubleAds;
 
         // ── LOSE — Popup 1 ────────────────────────────────────────────────────
         [Header("─── Lose: Popup 1 (Revive #1) ───────")]
         [SerializeField] private GameObject losePopup1;
-        [SerializeField] private TMP_Text lose1_CoinCostText;  // giá revive bằng vàng
-        [SerializeField] private Button lose1_ReviveCoinBtn; // dùng vàng → revive
-        [SerializeField] private Button lose1_ReviveAdsBtn;  // xem ads → revive miễn phí
-        [SerializeField] private Button lose1_CloseBtn;      // → popup 2
+        [SerializeField] private TMP_Text lose1_CoinCostText;
+        [SerializeField] private Button lose1_ReviveCoinBtn;
+        [SerializeField] private Button lose1_ReviveAdsBtn;
+        [SerializeField] private Button lose1_CloseBtn;
 
         // ── LOSE — Popup 2 ────────────────────────────────────────────────────
         [Header("─── Lose: Popup 2 (Revive #2) ───────")]
@@ -70,23 +49,30 @@ namespace FoodMatch.UI
         [SerializeField] private TMP_Text lose2_CoinCostText;
         [SerializeField] private Button lose2_ReviveCoinBtn;
         [SerializeField] private Button lose2_ReviveAdsBtn;
-        [SerializeField] private Button lose2_CloseBtn;      // → popup 3
+        [SerializeField] private Button lose2_CloseBtn;
 
         // ── LOSE — Popup 3 ────────────────────────────────────────────────────
         [Header("─── Lose: Popup 3 (Final) ─────────")]
         [SerializeField] private GameObject losePopup3;
         [SerializeField] private Button lose3_RetryBtn;
-        [SerializeField] private Button lose3_CloseBtn;      // loading → home
+        [SerializeField] private Button lose3_CloseBtn;
 
-        // ── Loading overlay (dùng chung, fade khi về home) ───────────────────
+        // ── QUIT WARNING ──────────────────────────────────────────────────────
+        [Header("─── Quit Warning Popup ───────────────")]
+        [Tooltip("Popup cảnh báo thoát. Nằm trong MainCanvas, script tự ReparentToPopupCanvas.")]
+        [SerializeField] private GameObject quitWarningPopup;
+        [Tooltip("Xác nhận thoát — giống lose3_CloseBtn: trừ HP + CleanupForHome + về Menu")]
+        [SerializeField] private Button quitConfirmBtn;
+        [Tooltip("Hủy — đóng popup, gọi callback để SettingsUI mở lại settings")]
+        [SerializeField] private Button quitCancelBtn;
+
+        // ── Loading overlay ───────────────────────────────────────────────────
         [Header("─── Loading Panel ───────────────────")]
-        [Tooltip("CanvasGroup của panel Loading (dùng lại panelLoading từ UIManager nếu có).")]
         [SerializeField] private CanvasGroup loadingPanel;
         [SerializeField] private float loadingFadeDuration = 0.35f;
 
         // ── Revive Dependencies ───────────────────────────────────────────────
         [Header("─── Revive Dependencies ──────────────")]
-        [Tooltip("Kéo BoosterInstaller vào đây để lấy BoosterContext cho ClearTrayBooster khi revive.")]
         [SerializeField] private BoosterInstaller boosterInstaller;
 
         // ── 3D Objects ────────────────────────────────────────────────────────
@@ -107,6 +93,7 @@ namespace FoodMatch.UI
         private bool _isShowing;
         private bool _doubleResolved;
         private Canvas _popupCanvas;
+        private System.Action _onQuitCancelled;
 
         // ═══════════════════════════════════════════════════════════════════════
         // UNITY LIFECYCLE
@@ -114,6 +101,9 @@ namespace FoodMatch.UI
 
         private void Awake()
         {
+            if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+            Instance = this;
+
             BuildPopupCanvas();
             HideAll();
             BindButtons();
@@ -147,6 +137,7 @@ namespace FoodMatch.UI
             ReparentToPopupCanvas(losePopup1);
             ReparentToPopupCanvas(losePopup2);
             ReparentToPopupCanvas(losePopup3);
+            ReparentToPopupCanvas(quitWarningPopup);
 
             Debug.Log("[GameResultUI] PopupCanvas đã được tạo.");
         }
@@ -182,23 +173,22 @@ namespace FoodMatch.UI
 
         private void BindButtons()
         {
-            // Win
             winBtn_NextLevel?.onClick.AddListener(OnClickNextLevel);
             winBtn_DoubleAds?.onClick.AddListener(OnClickDoubleRewardAds);
 
-            // Lose P1
             lose1_ReviveCoinBtn?.onClick.AddListener(() => OnClickReviveCoin(1));
             lose1_ReviveAdsBtn?.onClick.AddListener(() => OnClickReviveAds(1));
             lose1_CloseBtn?.onClick.AddListener(() => TransitionLosePopup(from: 1, to: 2));
 
-            // Lose P2
             lose2_ReviveCoinBtn?.onClick.AddListener(() => OnClickReviveCoin(2));
             lose2_ReviveAdsBtn?.onClick.AddListener(() => OnClickReviveAds(2));
             lose2_CloseBtn?.onClick.AddListener(() => TransitionLosePopup(from: 2, to: 3));
 
-            // Lose P3
             lose3_RetryBtn?.onClick.AddListener(OnClickRetry);
             lose3_CloseBtn?.onClick.AddListener(OnClickCloseToHome);
+
+            quitConfirmBtn?.onClick.AddListener(OnClickQuitConfirm);
+            quitCancelBtn?.onClick.AddListener(OnClickQuitCancel);
         }
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -213,12 +203,10 @@ namespace FoodMatch.UI
                     SetGameObjectsVisible(false);
                     ShowResult(isWin: true);
                     break;
-
                 case GameState.Lose:
                     SetGameObjectsVisible(false);
                     ShowResult(isWin: false);
                     break;
-
                 case GameState.LoadLevel:
                 case GameState.Menu:
                     ForceHideAll();
@@ -227,7 +215,94 @@ namespace FoodMatch.UI
         }
 
         // ═══════════════════════════════════════════════════════════════════════
-        // CORE SHOW FLOW
+        // QUIT WARNING — PUBLIC API
+        // ═══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// Gọi từ SettingsUI khi player bấm Quit.
+        /// Hiện overlay + QuitWarningPopup (trong PopupCanvas sortingOrder 999)
+        /// → tự nhiên render trên 3D objects, không cần ẩn gì thêm.
+        /// </summary>
+        /// <param name="onCancelled">Callback khi player bấm X/Hủy — SettingsUI mở lại settings.</param>
+        public void ShowQuitWarning(System.Action onCancelled)
+        {
+            _onQuitCancelled = onCancelled;
+
+            if (overlayDim != null)
+            {
+                overlayDim.gameObject.SetActive(true);
+                var c = overlayDim.color; c.a = 0f; overlayDim.color = c;
+                overlayDim.DOFade(overlayTargetAlpha, overlayFadeDuration)
+                    .SetUpdate(true)
+                    .OnComplete(() => AnimatePopupIn(quitWarningPopup));
+            }
+            else
+            {
+                AnimatePopupIn(quitWarningPopup);
+            }
+        }
+
+        // ── Xác nhận thoát — giống hệt OnClickCloseToHome ────────────────────
+
+        private void OnClickQuitConfirm()
+        {
+            HPManager.Instance?.DeductHPOnQuit();
+
+            HideQuitWarningInstant();
+            Time.timeScale = 1f;
+
+            LevelManager.Instance?.CleanupForHome();
+
+            if (loadingPanel != null)
+            {
+                loadingPanel.gameObject.SetActive(true);
+                loadingPanel.alpha = 0f;
+                loadingPanel.DOFade(1f, loadingFadeDuration)
+                    .OnComplete(() => GameManager.Instance?.ChangeState(GameState.Menu));
+            }
+            else
+            {
+                GameManager.Instance?.ChangeState(GameState.Menu);
+            }
+        }
+
+        // ── Hủy thoát — trả callback về SettingsUI ───────────────────────────
+
+        private void OnClickQuitCancel()
+        {
+            AnimatePopupOut(quitWarningPopup, () =>
+            {
+                // Fade out overlay
+                if (overlayDim != null)
+                {
+                    overlayDim.DOFade(0f, overlayFadeDuration)
+                        .SetUpdate(true)
+                        .OnComplete(() => overlayDim.gameObject.SetActive(false));
+                }
+
+                // Báo lại SettingsUI để mở lại settings popup
+                _onQuitCancelled?.Invoke();
+                _onQuitCancelled = null;
+            });
+        }
+
+        private void HideQuitWarningInstant()
+        {
+            if (quitWarningPopup != null)
+            {
+                quitWarningPopup.transform.DOKill();
+                quitWarningPopup.SetActive(false);
+            }
+            if (overlayDim != null)
+            {
+                overlayDim.DOKill();
+                var c = overlayDim.color; c.a = 0f; overlayDim.color = c;
+                overlayDim.gameObject.SetActive(false);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // WIN / LOSE FLOW
         // ═══════════════════════════════════════════════════════════════════════
 
         private void ShowResult(bool isWin)
@@ -252,16 +327,8 @@ namespace FoodMatch.UI
 
         private void ShowPopup(bool isWin)
         {
-            if (isWin)
-            {
-                SetupWinPopup();
-                AnimatePopupIn(popupWin);
-            }
-            else
-            {
-                SetupLosePopup1();
-                AnimatePopupIn(losePopup1);
-            }
+            if (isWin) { SetupWinPopup(); AnimatePopupIn(popupWin); }
+            else { SetupLosePopup1(); AnimatePopupIn(losePopup1); }
         }
 
         private void AnimatePopupIn(GameObject target)
@@ -291,39 +358,25 @@ namespace FoodMatch.UI
                 });
         }
 
-        // ═══════════════════════════════════════════════════════════════════════
-        // WIN SETUP
-        // ═══════════════════════════════════════════════════════════════════════
+        // ── Win ───────────────────────────────────────────────────────────────
 
         private void SetupWinPopup()
         {
             _doubleResolved = false;
-
-            if (CoinManager.Instance != null)
-            {
-                long reward = CoinManager.Instance.GetWinReward();
-                float mult = CoinManager.Instance.GetAdsMultiplier();
-                long doubled = (long)(reward * mult);
-
-                if (winCoinRewardText) winCoinRewardText.text = $"+{reward}";
-                if (winDoubleRewardText) winDoubleRewardText.text = $"+{doubled}";
-            }
-
-
+            if (CoinManager.Instance == null) return;
+            long reward = CoinManager.Instance.GetWinReward();
+            float mult = CoinManager.Instance.GetAdsMultiplier();
+            long doubled = (long)(reward * mult);
+            if (winCoinRewardText) winCoinRewardText.text = $"+{reward}";
+            if (winDoubleRewardText) winDoubleRewardText.text = $"+{doubled}";
         }
-
-        // ═══════════════════════════════════════════════════════════════════════
-        // WIN CALLBACKS
-        // ═══════════════════════════════════════════════════════════════════════
 
         private void OnClickDoubleRewardAds()
         {
             if (_doubleResolved) return;
-            // TODO: tích hợp Ads SDK thật — hiện tại giả lập thành công
             Debug.Log("[GameResultUI] Double Reward Ads – giả lập.");
             CoinManager.Instance?.DoubleWinReward();
             _doubleResolved = true;
-            // x2 xong → về home luôn
             CleanupAndResume();
             GameManager.Instance?.ChangeState(GameState.Menu);
         }
@@ -334,21 +387,11 @@ namespace FoodMatch.UI
             LevelManager.Instance?.LoadNextLevel();
         }
 
-        // ═══════════════════════════════════════════════════════════════════════
-        // LOSE SETUP
-        // ═══════════════════════════════════════════════════════════════════════
+        // ── Lose ──────────────────────────────────────────────────────────────
 
-        private void SetupLosePopup1()
-        {
-            RefreshReviveCoinButton(lose1_ReviveCoinBtn, lose1_CoinCostText);
-        }
+        private void SetupLosePopup1() => RefreshReviveCoinButton(lose1_ReviveCoinBtn, lose1_CoinCostText);
+        private void SetupLosePopup2() => RefreshReviveCoinButton(lose2_ReviveCoinBtn, lose2_CoinCostText);
 
-        private void SetupLosePopup2()
-        {
-            RefreshReviveCoinButton(lose2_ReviveCoinBtn, lose2_CoinCostText);
-        }
-
-        /// <summary>Cập nhật text giá coin và interactable cho nút dùng vàng.</summary>
         private void RefreshReviveCoinButton(Button btn, TMP_Text costText)
         {
             if (CoinManager.Instance == null) return;
@@ -358,21 +401,12 @@ namespace FoodMatch.UI
             if (btn) btn.interactable = coins >= cost;
         }
 
-        // ═══════════════════════════════════════════════════════════════════════
-        // LOSE TRANSITIONS
-        // ═══════════════════════════════════════════════════════════════════════
-
-        /// <summary>Animate từ popup (from) sang popup (to): 1→2, 2→3.</summary>
         private void TransitionLosePopup(int from, int to)
         {
-            GameObject fromPopup = GetLosePopup(from);
-            GameObject toPopup = GetLosePopup(to);
-
-            AnimatePopupOut(fromPopup, () =>
+            AnimatePopupOut(GetLosePopup(from), () =>
             {
                 if (to == 2) SetupLosePopup2();
-                // Popup 3 không cần setup riêng
-                AnimatePopupIn(toPopup);
+                AnimatePopupIn(GetLosePopup(to));
             });
         }
 
@@ -384,102 +418,59 @@ namespace FoodMatch.UI
             _ => null
         };
 
-        // ═══════════════════════════════════════════════════════════════════════
-        // LOSE CALLBACKS
-        // ═══════════════════════════════════════════════════════════════════════
-
-        /// <summary>
-        /// Dùng vàng hồi sinh (popup 1 hoặc 2).
-        /// Nếu đủ coin → trừ coin → ConfirmRevive.
-        /// </summary>
         private void OnClickReviveCoin(int popupIndex)
         {
             if (CoinManager.Instance == null) return;
-            if (!CoinManager.Instance.TryRevive()) return; // không đủ coin → button đã disabled, không xảy ra
+            if (!CoinManager.Instance.TryRevive()) return;
             ConfirmRevive(popupIndex, byAds: false);
         }
 
-        /// <summary>
-        /// Xem ads để hồi sinh miễn phí (popup 1 hoặc 2).
-        /// TODO: tích hợp Ads SDK thật — gọi ShowRewardedAd() rồi trong callback gọi ConfirmRevive.
-        /// </summary>
         private void OnClickReviveAds(int popupIndex)
         {
-            // TODO: thay dòng dưới bằng Ads SDK callback thật
             Debug.Log($"[GameResultUI] Revive Ads popup {popupIndex} – giả lập.");
             ConfirmRevive(popupIndex, byAds: true);
         }
 
-        /// <summary>
-        /// Xác nhận hồi sinh thành công (coin hoặc ads).
-        /// Flow:
-        ///   1. CleanupAndResume() → ẩn popup, Time.timeScale = 1
-        ///   2. Tạo ClearTrayBooster trực tiếp (không qua BoosterManager — không tốn quantity)
-        ///   3. Inject BoosterContext từ BoosterInstaller, gọi Execute()
-        ///   4. StartCoroutine chờ animation xong → ChangeState(Play)
-        /// </summary>
         private void ConfirmRevive(int popupIndex, bool byAds)
         {
-            Debug.Log($"[GameResultUI] Revive popup {popupIndex} byAds={byAds} → ClearTray + Play.");
-            CleanupAndResume(); // ẩn popup, Time.timeScale = 1
-
+            Debug.Log($"[GameResultUI] Revive popup {popupIndex} byAds={byAds}.");
+            CleanupAndResume();
             StartCoroutine(ReviveRoutine());
         }
 
-        private System.Collections.IEnumerator ReviveRoutine()
+        private IEnumerator ReviveRoutine()
         {
-            // Revive: chỉ dùng ClearTrayBooster để dọn BackupTray, không thay đổi
-            // bất kỳ thứ gì khác trong game state. LevelManager KHÔNG được ResetAllSystems()
-            // khi Lose — game state phải còn nguyên để chơi tiếp được.
-
             if (boosterInstaller != null && boosterInstaller.Context != null)
             {
                 var context = boosterInstaller.Context;
                 var clearTray = new ClearTrayBooster();
                 clearTray.Initialize(context);
-
                 if (clearTray.CanExecute())
                 {
-                    // Tính thời gian chờ animation: (N-1)*stagger + flyDuration + buffer
-                    // StaggerDelay=0.08s, FlyDuration=0.4s — khớp với hằng số trong ClearTrayBooster
                     int foodCount = context.BackupTray.OccupiedCount;
                     float waitTime = (foodCount - 1) * 0.08f + 0.4f + 0.15f;
-
                     clearTray.Execute();
                     yield return new WaitForSeconds(waitTime);
                 }
             }
             else
             {
-                Debug.LogWarning("[GameResultUI] boosterInstaller chưa gán — revive không có ClearTray animation.");
+                Debug.LogWarning("[GameResultUI] boosterInstaller chưa gán.");
             }
-
             GameManager.Instance?.ChangeState(GameState.Play);
         }
 
-        // ── Popup 3 ──────────────────────────────────────────────────────────
-
         private void OnClickRetry()
         {
-            // Người chơi từ chối revive và chọn retry → trừ HP
             HPManager.Instance?.DeductHPOnQuit();
             CleanupAndResume();
             LevelManager.Instance?.RestartCurrentLevel();
         }
 
-        /// <summary>Đóng popup 3 → reset toàn bộ game objects → fade loading → về Home.</summary>
         private void OnClickCloseToHome()
         {
-            // Người chơi từ chối revive và chọn về home → trừ HP
             HPManager.Instance?.DeductHPOnQuit();
             CleanupAndResume();
-
-            // Reset toàn bộ hệ thống game (grid, tray, order...) trước khi về home.
-            // Cần thiết vì LevelManager không còn reset khi Lose để cho phép revive.
-            // ChangeState(LoadLevel) sẽ trigger LevelManager.LoadLevel() → ResetAllSystems()
-            // nhưng ta không muốn load level — ta chỉ muốn reset sạch rồi về Menu.
-            // Dùng LoadLevel nội bộ thông qua một state trung gian là cách sạch nhất:
-            // gọi ResetAllSystems() trực tiếp qua LevelManager public method.
             LevelManager.Instance?.CleanupForHome();
 
             if (loadingPanel != null)
@@ -496,7 +487,7 @@ namespace FoodMatch.UI
         }
 
         // ═══════════════════════════════════════════════════════════════════════
-        // SHARED CALLBACKS
+        // HELPERS
         // ═══════════════════════════════════════════════════════════════════════
 
         public void OnClickGoHome()
@@ -504,10 +495,6 @@ namespace FoodMatch.UI
             CleanupAndResume();
             GameManager.Instance?.ChangeState(GameState.Menu);
         }
-
-        // ═══════════════════════════════════════════════════════════════════════
-        // HELPERS
-        // ═══════════════════════════════════════════════════════════════════════
 
         private void SetGameObjectsVisible(bool visible)
         {
@@ -530,6 +517,7 @@ namespace FoodMatch.UI
             losePopup1?.SetActive(false);
             losePopup2?.SetActive(false);
             losePopup3?.SetActive(false);
+            quitWarningPopup?.SetActive(false);
 
             if (overlayDim == null) return;
             overlayDim.DOKill();

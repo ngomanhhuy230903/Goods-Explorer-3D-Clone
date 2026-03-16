@@ -10,27 +10,26 @@ namespace FoodMatch.UI
     ///
     ///   [SettingsManager]          ← Empty GameObject, script SettingsUI.cs nằm ĐÂY
     ///       └─ [SettingsPopup]     ← kéo vào field settingsPopup, SetActive FALSE trong Editor
-    ///            ├─ Background
-    ///            ├─ BtnResume
-    ///            ├─ BtnClose
-    ///            ├─ BtnQuit
-    ///            └─ ...tất cả UI con
-    ///       └─ [QuitWarningPopup]  ← kéo vào field quitWarningPopup, SetActive FALSE trong Editor
     ///
     ///   [HUD]
     ///       └─ [BtnSettings]       ← kéo vào field btnSettings
-    ///                                 XÓA SẠCH Unity Events trên button này trong Inspector
+    ///                                 XÓA SẠCH Unity Events trên button này
     ///
-    /// LƯU Ý QUAN TRỌNG:
-    ///   - SettingsPopup và QuitWarningPopup phải SetActive FALSE ngay trong Editor
-    ///   - Script SettingsUI KHÔNG được nằm trên SettingsPopup
-    ///   - BtnSettings KHÔNG được có Unity Event nào — chỉ dùng field btnSettings
+    /// QUIT FLOW:
+    ///   SettingsUI.OnClickQuit()
+    ///     → đóng SettingsPopup
+    ///     → gọi GameResultUI.Instance.ShowQuitWarning(onCancelled: mở lại settings)
+    ///     → GameResultUI tự lo overlay + popup (trong PopupCanvas sortingOrder 999)
+    ///       → render trên 3D objects tự nhiên, không cần ẩn gì
+    ///     → Xác nhận: HPDeduct + CleanupForHome → Menu  (xử lý trong GameResultUI)
+    ///     → Hủy: callback → SettingsUI mở lại settingsPopup
     /// </summary>
     public class SettingsUI : MonoBehaviour
     {
-        [Header("Popups — phải SetActive FALSE trong Editor")]
+        // ─── Inspector ────────────────────────────────────────────────────────
+
+        [Header("Popup — phải SetActive FALSE trong Editor")]
         [SerializeField] private GameObject settingsPopup;
-        [SerializeField] private GameObject quitWarningPopup;
 
         [Header("Graphics")]
         [SerializeField] private Button btnLow;
@@ -68,21 +67,23 @@ namespace FoodMatch.UI
         [SerializeField] private Button btnResume;
         [SerializeField] private Button btnClose;
         [SerializeField] private Button btnQuit;
-        [SerializeField] private Button btnSettings; // XÓA Unity Event trên button này
+        [SerializeField] private Button btnSettings;
 
         [Header("Animation")]
         [SerializeField] private float panelScaleDuration = 0.35f;
         [SerializeField] private Ease panelOpenEase = Ease.OutBack;
         [SerializeField] private Ease panelCloseEase = Ease.InBack;
 
-        // Keys
+        // ─── Keys ─────────────────────────────────────────────────────────────
         private const string KEY_GRAPHICS = "Settings_Graphics";
         private const string KEY_SOUND = "Settings_SoundFx";
         private const string KEY_MUSIC = "Settings_Music";
         private const string KEY_VIBRATION = "Settings_Vibration";
 
+        // ─── Singleton ────────────────────────────────────────────────────────
         public static SettingsUI Instance { get; private set; }
 
+        // ─── Runtime ──────────────────────────────────────────────────────────
         private int _currentGraphics = 1;
         private bool _isOpen = false;
         private bool _vibrationOn = true;
@@ -95,10 +96,7 @@ namespace FoodMatch.UI
             if (Instance != null && Instance != this) { Destroy(gameObject); return; }
             Instance = this;
 
-            // Đảm bảo cả 2 popup tắt hoàn toàn khi start
-            // SetActive(false) = không render, không nhận raycast, không block click
             if (settingsPopup != null) settingsPopup.SetActive(false);
-            if (quitWarningPopup != null) quitWarningPopup.SetActive(false);
 
             LoadSettings();
             BindButtons();
@@ -147,7 +145,6 @@ namespace FoodMatch.UI
                 Time.timeScale = 0f;
             }
 
-            // SetActive(true) trước, sau đó mới tween
             settingsPopup.SetActive(true);
             settingsPopup.transform.DOKill();
             settingsPopup.transform.localScale = Vector3.zero;
@@ -169,7 +166,7 @@ namespace FoodMatch.UI
                 .DOScale(Vector3.zero, panelScaleDuration * 0.8f)
                 .SetEase(panelCloseEase)
                 .SetUpdate(true)
-                .OnComplete(() => settingsPopup.SetActive(false)); // tắt sau khi tween xong
+                .OnComplete(() => settingsPopup.SetActive(false));
         }
 
         // ─── Resume ───────────────────────────────────────────────────────────
@@ -193,7 +190,11 @@ namespace FoodMatch.UI
 
         private void OnClickQuit()
         {
-            // Ẩn settings, đợi tween xong mới hiện quit warning
+            // Đóng settings popup trước
+            // Không gọi CloseSettings() vì cần giữ _isOpen=true và _stateBeforeOpen
+            // để nếu player hủy quit thì resume lại đúng state
+            SaveSettings();
+
             settingsPopup.transform.DOKill();
             settingsPopup.transform
                 .DOScale(Vector3.zero, panelScaleDuration * 0.8f)
@@ -202,45 +203,42 @@ namespace FoodMatch.UI
                 .OnComplete(() =>
                 {
                     settingsPopup.SetActive(false);
-                    quitWarningPopup.SetActive(true);
-                    quitWarningPopup.transform.DOKill();
-                    quitWarningPopup.transform.localScale = Vector3.zero;
-                    quitWarningPopup.transform
-                        .DOScale(Vector3.one, panelScaleDuration)
-                        .SetEase(panelOpenEase)
-                        .SetUpdate(true);
+
+                    // Delegate hoàn toàn cho GameResultUI:
+                    // - overlay dim
+                    // - popup nằm trong PopupCanvas (sortingOrder 999)
+                    //   → tự render trên 3D objects, không cần ẩn gì
+                    // - xử lý Confirm (giống lose3_CloseBtn) và Cancel
+                    if (GameResultUI.Instance != null)
+                    {
+                        GameResultUI.Instance.ShowQuitWarning(onCancelled: OnQuitCancelled);
+                    }
+                    else
+                    {
+                        // Fallback nếu không có GameResultUI (ví dụ đang ở Home)
+                        // Thoát thẳng về Menu không cần cảnh báo
+                        _isOpen = false;
+                        _stateBeforeOpen = GameState.None;
+                        Time.timeScale = 1f;
+                        GameManager.Instance?.ChangeState(GameState.Menu);
+                    }
                 });
         }
 
-        public void ConfirmQuit()
+        /// <summary>
+        /// Callback từ GameResultUI khi player bấm X/Hủy trong QuitWarningPopup.
+        /// Mở lại settings popup và resume đúng trạng thái cũ.
+        /// </summary>
+        private void OnQuitCancelled()
         {
-            quitWarningPopup.SetActive(false);
-            _isOpen = false;
-            _stateBeforeOpen = GameState.None;
-            Time.timeScale = 1f;
-
-            EventBus.RaiseHPChanged(0, 0);
-            GameManager.Instance?.ChangeState(GameState.Menu);
-        }
-
-        public void CancelQuit()
-        {
-            quitWarningPopup.transform.DOKill();
-            quitWarningPopup.transform
-                .DOScale(Vector3.zero, panelScaleDuration * 0.8f)
-                .SetEase(panelCloseEase)
-                .SetUpdate(true)
-                .OnComplete(() =>
-                {
-                    quitWarningPopup.SetActive(false);
-                    settingsPopup.SetActive(true);
-                    settingsPopup.transform.DOKill();
-                    settingsPopup.transform.localScale = Vector3.zero;
-                    settingsPopup.transform
-                        .DOScale(Vector3.one, panelScaleDuration)
-                        .SetEase(panelOpenEase)
-                        .SetUpdate(true);
-                });
+            // _isOpen vẫn còn true từ trước, _stateBeforeOpen vẫn còn — mở lại bình thường
+            settingsPopup.SetActive(true);
+            settingsPopup.transform.DOKill();
+            settingsPopup.transform.localScale = Vector3.zero;
+            settingsPopup.transform
+                .DOScale(Vector3.one, panelScaleDuration)
+                .SetEase(panelOpenEase)
+                .SetUpdate(true);
         }
 
         // ─── Graphics ─────────────────────────────────────────────────────────
@@ -289,16 +287,14 @@ namespace FoodMatch.UI
             SaveSettings();
         }
 
-        private void RefreshSoundIcon(float value)
+        private void RefreshSoundIcon(float v)
         {
-            if (soundFxIcon != null)
-                soundFxIcon.sprite = value <= 0f ? soundOffSprite : soundOnSprite;
+            if (soundFxIcon != null) soundFxIcon.sprite = v <= 0f ? soundOffSprite : soundOnSprite;
         }
 
-        private void RefreshMusicIcon(float value)
+        private void RefreshMusicIcon(float v)
         {
-            if (musicIcon != null)
-                musicIcon.sprite = value <= 0f ? musicOffSprite : musicOnSprite;
+            if (musicIcon != null) musicIcon.sprite = v <= 0f ? musicOffSprite : musicOnSprite;
         }
 
         private void ApplyAudioVolumes(float sfx, float music)
@@ -377,7 +373,6 @@ namespace FoodMatch.UI
         private void OnDestroy()
         {
             if (settingsPopup != null) settingsPopup.transform.DOKill();
-            if (quitWarningPopup != null) quitWarningPopup.transform.DOKill();
         }
     }
 }
