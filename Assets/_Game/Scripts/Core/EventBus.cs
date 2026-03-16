@@ -49,7 +49,22 @@ namespace FoodMatch.Core
 
         /// <summary>Người chơi nhấn dùng nhưng quantity = 0 → gợi ý mua thêm.</summary>
         public static event Action<string> OnBoosterOutOfStock;
+        // ─── HP Events ────────────────────────────────────────────────────────
+        /// <summary>HP thay đổi. Params: (current, max).</summary>
+        public static event Action<int, int> OnHPChanged;
 
+        /// <summary>HP về 0, không thể chơi tiếp.</summary>
+        public static event Action OnHPEmpty;
+
+        /// <summary>HP đã hồi đầy.</summary>
+        public static event Action OnHPFull;
+
+        // ─── Coin Events ──────────────────────────────────────────────────────
+        /// <summary>Số coin thay đổi. Param: giá trị mới.</summary>
+        public static event Action<long> OnCoinChanged;
+
+        /// <summary>Không đủ coin. Param: số coin còn thiếu.</summary>
+        public static event Action<long> OnInsufficientCoins;
         // ─── Conveyor Obstacle Events ─────────────────────────────────────────
         /// <summary>
         /// Raised khi player tap collect food từ băng chuyền.
@@ -79,6 +94,11 @@ namespace FoodMatch.Core
         public static void RaiseBoosterUnlocked(string name) => OnBoosterUnlocked?.Invoke(name);
         public static void RaiseBoosterOutOfStock(string name) => OnBoosterOutOfStock?.Invoke(name);
         public static void RaiseConveyorFoodCollected(int foodID) => OnConveyorFoodCollected?.Invoke(foodID);
+        public static void RaiseHPChanged(int current, int max) => OnHPChanged?.Invoke(current, max);
+        public static void RaiseHPEmpty() => OnHPEmpty?.Invoke();
+        public static void RaiseHPFull() => OnHPFull?.Invoke();
+        public static void RaiseCoinChanged(long amount) => OnCoinChanged?.Invoke(amount);
+        public static void RaiseInsufficientCoins(long shortfall) => OnInsufficientCoins?.Invoke(shortfall);
 
         // ─── Cleanup ──────────────────────────────────────────────────────────
         public static void ClearAllEvents()
@@ -103,6 +123,11 @@ namespace FoodMatch.Core
             OnBoosterUnlocked = null;
             OnBoosterOutOfStock = null;
             OnConveyorFoodCollected = null;
+            OnHPChanged = null;
+            OnHPEmpty = null;
+            OnHPFull = null;
+            OnCoinChanged = null;
+            OnInsufficientCoins = null;
             Debug.Log("[EventBus] Tất cả events đã được dọn sạch.");
         }
     }

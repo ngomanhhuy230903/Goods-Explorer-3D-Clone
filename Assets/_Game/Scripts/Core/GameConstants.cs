@@ -8,7 +8,7 @@
     {
         // ─── Tray ─────────────────────────────────────────────────────────────
         public const int MIN_LAYERS = 1;
-        public const int MAX_LAYERS = 4;
+        public const int MAX_LAYERS = 5;
         public const int MIN_BACKUP_CAPACITY = 5;
         public const int MAX_BACKUP_CAPACITY = 7;
 
@@ -20,7 +20,7 @@
         public const int FOOD_SET_SIZE = 3;
 
         // ─── Customer ─────────────────────────────────────────────────────────
-        public const int MAX_CUSTOMERS_ON_SCREEN = 2;
+        public const int MAX_CUSTOMERS_ON_SCREEN = 4;
 
         // ─── Animation Durations (giây) ───────────────────────────────────────
         public const float FOOD_MOVE_DURATION = 0.35f;
