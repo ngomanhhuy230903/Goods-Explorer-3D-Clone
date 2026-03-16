@@ -121,16 +121,15 @@ namespace FoodMatch.Managers
                     _hpDeductedThisSession = false; // reset flag khi bắt đầu ván mới
                     break;
 
-                case GameState.Lose:
-                    DeductHP(config != null ? config.hpCostOnLose : 1);
-                    break;
-
-                    // Quit giữa chừng: caller gọi GameManager.ChangeState(Lose) hoặc
-                    // gọi HPManager.Instance.DeductHP(hpCostOnQuit) trực tiếp.
+                    // Lose: KHÔNG trừ HP ở đây.
+                    // Người chơi còn cơ hội revive (popup 1, 2).
+                    // HP chỉ bị trừ khi xác nhận bỏ ván:
+                    //   • Retry   → GameResultUI.OnClickRetry()        → DeductHP()
+                    //   • Go Home → GameResultUI.OnClickCloseToHome()  → DeductHP()
             }
         }
 
-        /// <summary>Trừ HP khi người chơi chủ động thoát ván.</summary>
+        /// <summary>Trừ HP khi người chơi xác nhận bỏ ván (Retry hoặc Go Home).</summary>
         public void DeductHPOnQuit()
         {
             DeductHP(config != null ? config.hpCostOnQuit : 1);

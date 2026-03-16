@@ -19,6 +19,12 @@ namespace FoodMatch.Items
         [SerializeField] private BackupTraySpawner backupTraySpawner;
         [SerializeField] private FoodBuffer foodBuffer;
 
+        /// <summary>
+        /// Context được lưu lại để GameResultUI có thể lấy khi cần
+        /// tạo ClearTrayBooster trực tiếp lúc revive (không tốn quantity).
+        /// </summary>
+        public BoosterContext Context { get; private set; }
+
         private void Start()
         {
             if (BoosterManager.Instance == null)
@@ -27,16 +33,16 @@ namespace FoodMatch.Items
                 return;
             }
 
-            var context = new BoosterContext(
+            Context = new BoosterContext(
                 orderQueue,
                 foodGridSpawner,
                 backupTray,
                 backupTraySpawner,
                 foodBuffer,
-                coroutineRunner: this   // MonoBehaviour để chạy Coroutine
+                coroutineRunner: this
             );
 
-            BoosterManager.Instance.AutoRegisterAll(context);
+            BoosterManager.Instance.AutoRegisterAll(Context);
         }
     }
 }

@@ -16,6 +16,7 @@ public class UIManager : MonoBehaviour
 
     [Header("Home UI")]
     [SerializeField] private RectTransform btnPlay;
+    [SerializeField] private GameObject popupNoHP;
 
     private void Awake()
     {
@@ -125,8 +126,28 @@ public class UIManager : MonoBehaviour
 
     public void OnClickPlayButton()
     {
+        // Kiểm tra HP trước khi cho phép vào game
+        if (HPManager.Instance != null && !HPManager.Instance.HasHPToPlay())
+        {
+            ShowNoHPPopup();
+            return;
+        }
+
         if (btnPlay != null) btnPlay.DOKill();
         int levelToLoad = SaveManager.CurrentLevel;
         LevelManager.Instance.RequestLoadLevel(levelToLoad);
+    }
+
+    private void ShowNoHPPopup()
+    {
+        // Option 1: có popup riêng → bật lên
+        if (popupNoHP != null)
+        {
+            popupNoHP.SetActive(true);
+            return;
+        }
+
+        // Option 2: chưa có popup → log tạm, thay bằng UI thật sau
+        Debug.Log("[UIManager] Hết HP, không thể chơi!");
     }
 }

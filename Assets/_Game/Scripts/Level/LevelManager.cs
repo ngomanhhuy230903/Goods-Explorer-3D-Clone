@@ -11,6 +11,12 @@ namespace FoodMatch.Level
 {
     /// <summary>
     /// Điều phối toàn bộ vòng đời 1 level.
+    ///
+    /// Reset policy:
+    ///   • Win          → ResetAllSystems() (dọn dẹp để load level tiếp)
+    ///   • Lose         → KHÔNG reset — game state giữ nguyên để người chơi revive
+    ///   • Retry/Restart → RequestLoadLevel() → LoadLevel() → ResetAllSystems() bên trong
+    ///   • Revive       → GameResultUI.ChangeState(Play) trực tiếp, không qua đây
     /// </summary>
     public class LevelManager : MonoBehaviour
     {
@@ -34,11 +40,12 @@ namespace FoodMatch.Level
         [Tooltip("Spawn food vào FoodTray SAU khi grid xong. Tự lấy SharedFoodList từ OrderQueue.")]
         [SerializeField] private FoodTraySpawner foodTraySpawner;
 
+        [Header("─── Obstacles ────────────────────────")]
+        [SerializeField] private ObstacleManager obstacleManager;
+
         // ─── Runtime ──────────────────────────────────────────────────────────
         public LevelConfig CurrentConfig { get; private set; }
         public int CurrentLevelIndex { get; private set; } = 1;
-        [Header("─── Obstacles ────────────────────────")]
-        [SerializeField] private ObstacleManager obstacleManager;
 
         // ─────────────────────────────────────────────────────────────────────
         private void Awake()
@@ -52,11 +59,23 @@ namespace FoodMatch.Level
 
         private void HandleGameStateChanged(GameState state)
         {
-            if (state == GameState.LoadLevel)
-                LoadLevel(CurrentLevelIndex);
-            else if (state == GameState.Win || state == GameState.Lose)
+            switch (state)
             {
-                ResetAllSystems();
+                case GameState.LoadLevel:
+                    LoadLevel(CurrentLevelIndex);
+                    break;
+
+                case GameState.Win:
+                    // Win: reset để chuẩn bị load level tiếp (Next Level hoặc về Menu)
+                    ResetAllSystems();
+                    break;
+
+                    // Lose: KHÔNG làm gì cả.
+                    // Game state (BackupTray, Grid, OrderQueue, FoodTray) giữ nguyên.
+                    // GameResultUI sẽ quyết định bước tiếp:
+                    //   • Revive → ChangeState(Play) — chơi tiếp nguyên trạng
+                    //   • Retry  → RestartCurrentLevel() → LoadLevel() → ResetAllSystems()
+                    //   • Home   → ChangeState(Menu)
             }
         }
 
@@ -68,7 +87,21 @@ namespace FoodMatch.Level
             GameManager.Instance.ChangeState(GameState.LoadLevel);
         }
 
+        /// <summary>
+        /// Retry: reset toàn bộ và load lại level hiện tại từ đầu.
+        /// Đây là con đường DUY NHẤT trigger ResetAllSystems() sau khi Lose.
+        /// </summary>
         public void RestartCurrentLevel() => RequestLoadLevel(CurrentLevelIndex);
+
+        /// <summary>
+        /// Gọi khi người chơi thoát ván thua về Home (không retry, không revive).
+        /// Reset sạch toàn bộ game objects mà không load level mới.
+        /// </summary>
+        public void CleanupForHome()
+        {
+            ResetAllSystems();
+            Debug.Log("[LevelManager] CleanupForHome: đã reset toàn bộ hệ thống.");
+        }
 
         public void LoadNextLevel()
         {
@@ -89,11 +122,10 @@ namespace FoodMatch.Level
             }
 
             CurrentConfig = config;
-            ResetAllSystems();
+            ResetAllSystems();               // reset trước khi spawn mọi thứ
 
             InitBackupTray(config);          // 1. Backup tray
             InitFoodGrid(config);            // 2. Tạo grid (async)
-
             InitOrderQueue(config);          // 3. Sinh SharedFoodList
 
             // 4. Obstacles reserve TRƯỚC — tubes & conveyor rút food ra khỏi SharedFoodList
@@ -108,6 +140,7 @@ namespace FoodMatch.Level
             GameManager.Instance.ChangeState(GameState.Play);
             Debug.Log($"[LevelManager] Level {levelIndex} sẵn sàng!");
         }
+
         // ─── System Init ──────────────────────────────────────────────────────
 
         private void InitBackupTray(LevelConfig config)
@@ -128,26 +161,20 @@ namespace FoodMatch.Level
         /// <summary>
         /// Bước 3: OrderQueue.Initialize() sinh SharedFoodList.
         /// SharedFoodList = SOURCE OF TRUTH cho cả OrderTray và FoodTray.
-        /// totalFood trong config đã được LevelGeneratorEditor tính đúng:
-        ///   totalFood = (gridCapacity / (foodTypes×3)) × (foodTypes×3)
-        /// → đảm bảo chia đều và không bao giờ vượt capacity FoodTray.
         /// </summary>
         private void InitOrderQueue(LevelConfig config)
         {
             if (orderQueue == null) { Debug.LogWarning("[LevelManager] OrderQueue chưa gán!"); return; }
             orderQueue.Initialize(config);
-            // Sau dòng này: orderQueue.SharedFoodList đã có đầy đủ dữ liệu
         }
 
         /// <summary>
-        /// Bước 4: FoodTraySpawner chỉ cần gọi SpawnFood().
-        /// Nó sẽ tự lấy OrderQueue.Instance.SharedFoodList trong callback OnGridSpawnComplete.
-        /// KHÔNG cần gọi SetFoodList() nữa — đã deprecated.
+        /// Bước 5: FoodTraySpawner tự lấy SharedFoodList từ OrderQueue
+        /// trong callback OnGridSpawnComplete.
         /// </summary>
         private void InitFoodTraySpawner(LevelConfig config)
         {
             if (foodTraySpawner == null) { Debug.LogWarning("[LevelManager] FoodTraySpawner chưa gán!"); return; }
-
             foodTraySpawner.SpawnFood(config);
         }
 
@@ -172,6 +199,10 @@ namespace FoodMatch.Level
             progressTracker.Initialize(config);
         }
 
+        /// <summary>
+        /// Dọn sạch toàn bộ hệ thống về trạng thái trống.
+        /// CHỈ gọi bên trong LoadLevel() — không gọi trực tiếp từ ngoài.
+        /// </summary>
         private void ResetAllSystems()
         {
             BoosterManager.Instance?.ResetAllBoosterSessions();

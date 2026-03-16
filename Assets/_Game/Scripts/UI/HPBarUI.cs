@@ -1,5 +1,4 @@
-﻿using System;
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using FoodMatch.Managers;
@@ -7,98 +6,90 @@ using FoodMatch.Managers;
 namespace FoodMatch.UI
 {
     /// <summary>
-    /// Hiển thị thanh HP và đếm ngược thời gian hồi HP.
-    /// Attach lên GameObject chứa UI HP (thường ở HUD / Home screen).
+    /// Hiển thị icon tim HP và đếm ngược thời gian hồi.
+    /// - Icon tim: sprite đổi theo HP hiện tại / max.
+    /// - Timer: "20:00" → "00:00", khi full hiện "Full".
+    /// Attach lên GameObject HP trên HUD / Home screen.
     /// </summary>
     public class HPBarUI : MonoBehaviour
     {
-        [Header("HP Icons (tuỳ chọn – dùng icon thay progress bar)")]
-        [Tooltip("Mảng icon HP. Index 0 = trái. Nên bằng maxHP trong config.")]
-        [SerializeField] private Image[] hpIcons;
-        [SerializeField] private Sprite hpFullSprite;
-        [SerializeField] private Sprite hpEmptySprite;
+        [Header("─── Heart Icon ─────────────────────")]
+        [Tooltip("Image hiện icon tim (1 icon duy nhất đổi sprite).")]
+        [SerializeField] private Image heartIcon;
+        [SerializeField] private Sprite heartFullSprite;
+        [SerializeField] private Sprite heartEmptySprite;
 
-        [Header("Progress Bar (tuỳ chọn – thay thế icon)")]
-        [SerializeField] private Slider hpSlider;
+        [Header("─── Timer Text ──────────────────────")]
+        [Tooltip("TMP_Text hiện đếm ngược dạng 'MM:SS' hoặc 'Full' khi đầy.")]
+        [SerializeField] private TMP_Text timerText;
 
-        [Header("Labels")]
-        [SerializeField] private TMP_Text hpCountText;       // "3/5"
-        [SerializeField] private TMP_Text regenTimerText;    // "12:34" hoặc "FULL"
-
-        [Header("Full HP Panel (ẩn timer khi đầy)")]
-        [SerializeField] private GameObject timerPanel;
+        // ─────────────────────────────────────────────────────────────────────
 
         private void OnEnable()
         {
-            HPManager.OnHPChanged += Refresh;
-            HPManager.OnHPFull += OnFull;
+            HPManager.OnHPChanged += OnHPChanged;
+            HPManager.OnHPFull += OnHPFull;
         }
 
         private void OnDisable()
         {
-            HPManager.OnHPChanged -= Refresh;
-            HPManager.OnHPFull -= OnFull;
+            HPManager.OnHPChanged -= OnHPChanged;
+            HPManager.OnHPFull -= OnHPFull;
         }
 
         private void Start()
         {
-            if (HPManager.Instance != null)
-                Refresh(HPManager.Instance.CurrentHP, HPManager.Instance.MaxHP);
+            if (HPManager.Instance == null) return;
+            OnHPChanged(HPManager.Instance.CurrentHP, HPManager.Instance.MaxHP);
         }
 
         private void Update()
         {
-            UpdateTimer();
+            TickTimer();
         }
 
         // ─── Callbacks ────────────────────────────────────────────────────────
 
-        private void Refresh(int current, int max)
+        private void OnHPChanged(int current, int max)
         {
-            // Icons
-            for (int i = 0; i < hpIcons.Length; i++)
-            {
-                if (hpIcons[i] == null) continue;
-                hpIcons[i].sprite = i < current ? hpFullSprite : hpEmptySprite;
-            }
+            // Đổi sprite tim: full khi còn HP, empty khi hết
+            if (heartIcon != null)
+                heartIcon.sprite = current > 0 ? heartFullSprite : heartEmptySprite;
 
-            // Slider
-            if (hpSlider != null)
-            {
-                hpSlider.maxValue = max;
-                hpSlider.value = current;
-            }
-
-            // Text
-            if (hpCountText != null)
-                hpCountText.text = $"{current}/{max}";
-
-            // Timer panel visibility
-            bool isFull = current >= max;
-            if (timerPanel != null)
-                timerPanel.SetActive(!isFull);
+            if (current >= max)
+                SetTimerFull();
         }
 
-        private void OnFull()
+        private void OnHPFull()
         {
-            if (regenTimerText != null) regenTimerText.text = "FULL";
-            if (timerPanel != null) timerPanel.SetActive(false);
+            if (heartIcon != null && heartFullSprite != null)
+                heartIcon.sprite = heartFullSprite;
+            SetTimerFull();
         }
 
-        private void UpdateTimer()
+        // ─── Timer ────────────────────────────────────────────────────────────
+
+        private void TickTimer()
         {
             if (HPManager.Instance == null) return;
             if (HPManager.Instance.CurrentHP >= HPManager.Instance.MaxHP) return;
 
-            float seconds = HPManager.Instance.SecondsUntilNextRegen;
-            if (regenTimerText != null)
-                regenTimerText.text = FormatTime(seconds);
+            if (timerText != null)
+                timerText.text = FormatTime(HPManager.Instance.SecondsUntilNextRegen);
         }
 
+        private void SetTimerFull()
+        {
+            if (timerText != null)
+                timerText.text = "Full";
+        }
+
+        // "1200s" → "20:00",  "65s" → "01:05"
         private static string FormatTime(float totalSeconds)
         {
-            int m = (int)(totalSeconds / 60);
-            int s = (int)(totalSeconds % 60);
+            int total = Mathf.Max(0, Mathf.CeilToInt(totalSeconds));
+            int m = total / 60;
+            int s = total % 60;
             return $"{m:00}:{s:00}";
         }
     }
