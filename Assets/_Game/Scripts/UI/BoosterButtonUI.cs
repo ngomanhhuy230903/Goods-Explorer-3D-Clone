@@ -4,6 +4,7 @@ using UnityEngine.UI;
 using DG.Tweening;
 using FoodMatch.Items;
 using FoodMatch.Core;
+using FoodMatch.Data;
 
 namespace FoodMatch.UI
 {

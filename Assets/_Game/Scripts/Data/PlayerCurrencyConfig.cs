@@ -4,9 +4,15 @@ namespace FoodMatch.Data
 {
     /// <summary>
     /// ScriptableObject chứa toàn bộ cấu hình cho HP và Coin.
-    /// Tạo tại: Assets/ScriptableObjects/Items/PlayerCurrencyConfig.asset
+    ///
+    /// Đặt tại: Assets/ScriptableObjects/Currency/PlayerCurrencyConfig.asset
+    /// (Tạo folder Currency trong ScriptableObjects là hoàn toàn ổn và được khuyến khích.)
+    ///
+    /// Giá coin của từng Booster được cấu hình RIÊNG trong từng BoosterData SO
+    /// (field coinCost) để mỗi booster có thể có giá khác nhau.
     /// </summary>
-    [CreateAssetMenu(fileName = "PlayerCurrencyConfig", menuName = "FoodMatch/Player Currency Config")]
+    [CreateAssetMenu(fileName = "PlayerCurrencyConfig",
+                     menuName = "FoodMatch/Currency/Player Currency Config")]
     public class PlayerCurrencyConfig : ScriptableObject
     {
         [Header("─── HP Settings ───────────────────────────────────")]
@@ -39,16 +45,8 @@ namespace FoodMatch.Data
         [Range(1f, 5f)]
         public float adsCoinMultiplier = 2f;
 
-        [Tooltip("Chi phí coin để hồi sinh khi thua (Revive).")]
+        [Tooltip("Chi phí coin để hồi sinh khi thua (Revive). 0 = vô hiệu tính năng.")]
         [Min(0)]
         public int reviveCost = 30;
-
-        [Header("─── Booster Purchase Costs (override BoosterData) ─")]
-        [Tooltip("Nếu true, dùng giá trong config này thay vì BoosterData.")]
-        public bool overrideBoosterCosts = false;
-
-        [Tooltip("Giá mua mặc định mỗi lượt booster (khi override = true).")]
-        [Min(0)]
-        public int defaultBoosterCost = 20;
     }
 }

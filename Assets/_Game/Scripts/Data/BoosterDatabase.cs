@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 
-namespace FoodMatch.Items
+namespace FoodMatch.Data
 {
     /// <summary>
     /// Database SO chứa toàn bộ BoosterData.

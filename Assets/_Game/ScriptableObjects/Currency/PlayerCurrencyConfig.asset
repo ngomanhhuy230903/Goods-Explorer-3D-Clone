@@ -17,8 +17,6 @@ MonoBehaviour:
   hpRegenAmount: 1
   hpCostOnLose: 1
   hpCostOnQuit: 1
-  coinRewardOnWin: 50
+  coinRewardOnWin: 20
   adsCoinMultiplier: 2
-  reviveCost: 30
-  overrideBoosterCosts: 0
-  defaultBoosterCost: 20
+  reviveCost: 100

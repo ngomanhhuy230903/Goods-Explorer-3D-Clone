@@ -20,3 +20,5 @@ MonoBehaviour:
   initialQuantity: 1
   maxQuantity: 999
   rewardQuantity: 1
+  coinCost: 50
+  coinPurchaseAmount: 1
