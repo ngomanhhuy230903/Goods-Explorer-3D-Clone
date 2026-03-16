@@ -8,6 +8,7 @@ namespace FoodMatch.UI
     /// <summary>
     /// Hiển thị icon tim HP và đếm ngược thời gian hồi.
     /// - Icon tim: sprite đổi theo HP hiện tại / max.
+    /// - HP Text: hiển thị dạng "current/max" (ví dụ: "3/5").
     /// - Timer: "20:00" → "00:00", khi full hiện "Full".
     /// Attach lên GameObject HP trên HUD / Home screen.
     /// </summary>
@@ -19,6 +20,10 @@ namespace FoodMatch.UI
         [SerializeField] private Sprite heartFullSprite;
         [SerializeField] private Sprite heartEmptySprite;
 
+        [Header("─── HP Count Text ───────────────────")]
+        [Tooltip("TMP_Text hiện số tim dạng 'current/max', ví dụ '3/5'.")]
+        [SerializeField] private TMP_Text hpCountText;
+
         [Header("─── Timer Text ──────────────────────")]
         [Tooltip("TMP_Text hiện đếm ngược dạng 'MM:SS' hoặc 'Full' khi đầy.")]
         [SerializeField] private TMP_Text timerText;
@@ -29,6 +34,11 @@ namespace FoodMatch.UI
         {
             HPManager.OnHPChanged += OnHPChanged;
             HPManager.OnHPFull += OnHPFull;
+
+            // FIX: Refresh ngay khi panel được enable (kể cả lần re-enable).
+            // Tránh trường hợp Start() đã chạy rồi nhưng panel bị tắt/bật lại.
+            if (HPManager.Instance != null)
+                OnHPChanged(HPManager.Instance.CurrentHP, HPManager.Instance.MaxHP);
         }
 
         private void OnDisable()
@@ -37,11 +47,9 @@ namespace FoodMatch.UI
             HPManager.OnHPFull -= OnHPFull;
         }
 
-        private void Start()
-        {
-            if (HPManager.Instance == null) return;
-            OnHPChanged(HPManager.Instance.CurrentHP, HPManager.Instance.MaxHP);
-        }
+        // FIX: Bỏ Start() riêng — OnEnable đã xử lý cả lần đầu lẫn re-enable.
+        // Nếu Instance chưa tồn tại lúc OnEnable chạy, event OnHPChanged sẽ
+        // tự cập nhật UI khi HPManager khởi tạo xong và fire event lần đầu.
 
         private void Update()
         {
@@ -52,9 +60,13 @@ namespace FoodMatch.UI
 
         private void OnHPChanged(int current, int max)
         {
-            // Đổi sprite tim: full khi còn HP, empty khi hết
+            // Đổi sprite tim
             if (heartIcon != null)
-                heartIcon.sprite = current > 0 ? heartFullSprite : heartEmptySprite;
+                heartIcon.sprite = (current > 0) ? heartFullSprite : heartEmptySprite;
+
+            // FIX: Cập nhật text số tim dạng "current/max"
+            if (hpCountText != null)
+                hpCountText.text = $"{current}/{max}";
 
             if (current >= max)
                 SetTimerFull();
@@ -64,6 +76,7 @@ namespace FoodMatch.UI
         {
             if (heartIcon != null && heartFullSprite != null)
                 heartIcon.sprite = heartFullSprite;
+
             SetTimerFull();
         }
 
