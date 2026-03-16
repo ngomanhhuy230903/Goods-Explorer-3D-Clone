@@ -5,21 +5,14 @@ using DG.Tweening;
 namespace FoodMatch.Obstacle
 {
     /// <summary>
-    /// Hiển thị lock icon + HP cho FoodTray bị khóa.
-    /// Spawn vào neutralContainer (KHÔNG phải child của FoodTray) để tránh scale bị nhân.
-    /// Follow vị trí FoodTray qua Update() giống SlotFollower của FoodItem.
-    ///
-    /// FIX 1: Dùng TextMeshPro (3D) thay vì TextMeshProUGUI — không cần Canvas.
-    /// FIX 2: Billboard rotation — icon luôn quay về phía camera dù tray xoay.
+    /// Spawn vào neutralContainer — không bị scale bởi FoodTray.
+    /// LateUpdate chỉ copy POSITION từ anchor + offset Y/Z.
+    /// Rotation giữ nguyên như prefab gốc, không bị ảnh hưởng bởi tray xoay.
     /// </summary>
     public class LockTrayView : MonoBehaviour
     {
-        // ─── Inspector ────────────────────────────────────────────────────────
         [Header("─── References ─────────────────────")]
         [SerializeField] private SpriteRenderer lockIconRenderer;
-
-        // FIX 1: Đổi TextMeshProUGUI → TMPro.TextMeshPro (3D Text, không cần Canvas)
-        // Trong prefab: xoá Text (UI), thêm GameObject → Add Component → TextMeshPro (3D)
         [SerializeField] private TMPro.TextMeshPro hpText;
 
         [Header("─── Sprites ─────────────────────────")]
@@ -33,70 +26,49 @@ namespace FoodMatch.Obstacle
         [SerializeField] private float unlockScaleDuration = 0.4f;
         [SerializeField] private float unlockFadeDuration = 0.3f;
 
-        [Header("─── Billboard ────────────────────────")]
-        [Tooltip("Bật để icon & text luôn quay về phía camera (billboard effect).")]
-        [SerializeField] private bool useBillboard = true;
-
-        // ─── Runtime ──────────────────────────────────────────────────────────
-
         public int CurrentHp { get; private set; }
         public bool IsLocked => CurrentHp > 0;
 
-        private Transform _followTarget;
-        private Vector3 _followOffset;
+        private Transform _anchor;
+        private Vector3 _offset;          // chỉ Y và Z được dùng
         private bool _isFollowing;
-        private Vector3 _baseLocalScale;
-
-        private Camera _mainCam;
+        private Vector3 _baseScale;
+        private Quaternion _prefabRotation; // rotation gốc từ prefab, không bao giờ thay đổi
 
         // ─────────────────────────────────────────────────────────────────────
 
-        private void Awake()
+        private void LateUpdate()
         {
-            _mainCam = Camera.main;
-        }
+            if (!_isFollowing || _anchor == null) return;
 
-        private void Update()
-        {
-            // ── Follow position ──────────────────────────────────────────────
-            if (_isFollowing && _followTarget != null)
-                transform.position = _followTarget.position + _followOffset;
-
-            // FIX 2: Billboard — luôn quay mặt về phía camera
-            if (useBillboard && _mainCam != null)
-            {
-                // LookAt camera nhưng chỉ dùng forward của camera (tránh nghiêng ngả)
-                transform.rotation = Quaternion.LookRotation(
-                    transform.position - _mainCam.transform.position,
-                    _mainCam.transform.up);
-            }
+            // Chỉ copy position + offset, KHÔNG đụng rotation
+            transform.position = _anchor.position + _offset;
         }
 
         // ─── Public API ───────────────────────────────────────────────────────
 
-        /// <summary>Bắt đầu follow target (anchor slot) với offset world.</summary>
-        public void Follow(Transform target, Vector3 worldOffset)
+        /// <summary>
+        /// offset.y = khoảng cách trên/dưới so với anchor.
+        /// offset.z = khoảng cách gần/xa camera so với anchor.
+        /// </summary>
+        public void Follow(Transform anchor, Vector3 offset)
         {
-            _followTarget = target;
-            _followOffset = worldOffset;
+            _anchor = anchor;
+            _offset = offset;
             _isFollowing = true;
         }
 
-        /// <summary>Dừng follow — gọi khi Reset.</summary>
         public void StopFollowing()
         {
             _isFollowing = false;
-            _followTarget = null;
+            _anchor = null;
         }
 
-        /// <summary>
-        /// Khởi tạo view với HP.
-        /// Gọi SAU khi đã Instantiate — scale đã đúng vì không phải child của FoodTray.
-        /// </summary>
         public void Setup(int hp)
         {
             CurrentHp = hp;
-            _baseLocalScale = transform.localScale; // cache scale gốc prefab
+            _baseScale = transform.localScale;
+            _prefabRotation = transform.rotation; // cache rotation gốc prefab
 
             if (lockIconRenderer != null)
             {
@@ -108,7 +80,6 @@ namespace FoodMatch.Obstacle
             RefreshHpText();
         }
 
-        /// <summary>Giảm 1 HP. Trả về true nếu vừa unlock.</summary>
         public bool TakeHit()
         {
             if (!IsLocked) return false;
@@ -116,25 +87,18 @@ namespace FoodMatch.Obstacle
             CurrentHp--;
             RefreshHpText();
 
-            if (CurrentHp <= 0)
-            {
-                PlayUnlockAnimation();
-                return true;
-            }
+            if (CurrentHp <= 0) { PlayUnlockAnimation(); return true; }
 
             PlayHitAnimation();
             return false;
         }
 
-        /// <summary>Ẩn và dừng follow ngay lập tức khi Reset.</summary>
         public void HideImmediate()
         {
             StopFollowing();
             DOTween.Kill(transform);
-            if (lockIconRenderer != null)
-                lockIconRenderer.gameObject.SetActive(false);
-            if (hpText != null)
-                hpText.gameObject.SetActive(false);
+            if (lockIconRenderer != null) lockIconRenderer.gameObject.SetActive(false);
+            if (hpText != null) hpText.gameObject.SetActive(false);
         }
 
         // ─── Animations ───────────────────────────────────────────────────────
@@ -148,7 +112,8 @@ namespace FoodMatch.Obstacle
                 .DOShakeRotation(hitShakeDuration,
                     new Vector3(0f, 0f, hitShakeStrength),
                     hitShakeVibrato, fadeOut: true)
-                .SetEase(Ease.OutBounce);
+                .SetEase(Ease.OutBounce)
+                .OnComplete(() => transform.rotation = _prefabRotation); // restore sau shake
 
             lockIconRenderer.DOColor(Color.red, hitShakeDuration * 0.3f)
                 .SetLoops(2, LoopType.Yoyo)
@@ -157,23 +122,17 @@ namespace FoodMatch.Obstacle
 
         private void PlayUnlockAnimation()
         {
-            if (lockIconRenderer == null)
-            {
-                gameObject.SetActive(false);
-                return;
-            }
+            if (lockIconRenderer == null) { gameObject.SetActive(false); return; }
 
-            // Dừng follow để icon không nhảy lung tung lúc animate
             StopFollowing();
             DOTween.Kill(transform, complete: false);
 
             if (unlockingSprite != null)
                 lockIconRenderer.sprite = unlockingSprite;
 
-            // Scale lên 1.4× từ scale gốc rồi fade
             DOTween.Sequence()
                 .Append(transform
-                    .DOScale(_baseLocalScale * 1.4f, unlockScaleDuration)
+                    .DOScale(_baseScale * 1.4f, unlockScaleDuration)
                     .SetEase(Ease.OutBack))
                 .Join(lockIconRenderer
                     .DOFade(0f, unlockFadeDuration)

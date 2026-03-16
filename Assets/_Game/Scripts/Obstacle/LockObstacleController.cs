@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using UnityEngine;
 using FoodMatch.Data;
 using FoodMatch.Tray;
-using FoodMatch.Order;
 using FoodMatch.Core;
 
 namespace FoodMatch.Obstacle
@@ -14,8 +13,11 @@ namespace FoodMatch.Obstacle
         [Header("─── Lock View ────────────────────────")]
         [SerializeField] private LockTrayView lockViewPrefab;
 
-        [Tooltip("Offset world so với vị trí FoodTray (dùng để đặt icon phía trên tray).")]
-        [SerializeField] private Vector3 worldOffset = new Vector3(0f, 0.3f, -0.1f);
+        [Tooltip("Khoảng cách lên/xuống so với anchor slot.")]
+        [SerializeField] private float offsetY = 0.3f;
+
+        [Tooltip("Khoảng cách gần/xa camera so với anchor slot. Âm = gần camera hơn.")]
+        [SerializeField] private float offsetZ = -0.1f;
 
         // ─── Runtime ──────────────────────────────────────────────────────────
 
@@ -78,7 +80,6 @@ namespace FoodMatch.Obstacle
 
             if (_pendingData == null) return;
 
-            // Container ngang hàng với food — không bị ảnh hưởng bởi FoodTray scale
             Transform container = _gridSpawner.GetNeutralContainer();
             if (container == null)
             {
@@ -103,20 +104,18 @@ namespace FoodMatch.Obstacle
 
                 tray.SetLocked(true);
 
-                // Lấy anchor Slot 1-2 (layer0, index 1) làm điểm spawn
-                // Fallback: index 0 nếu không có index 1, fallback tiếp: tray.transform
                 var layer0 = tray.GetLayer0Anchors();
-                Transform anchorTarget = layer0.Count > 1 ? layer0[1]
-                                       : layer0.Count > 0 ? layer0[0]
-                                       : tray.transform;
+                Transform anchor = layer0.Count > 1 ? layer0[1]
+                                 : layer0.Count > 0 ? layer0[0]
+                                 : tray.transform;
 
-                LockTrayView view = SpawnLockView(anchorTarget, container);
+                LockTrayView view = SpawnLockView(anchor, container);
                 view.Setup(hp);
 
                 _lockedTrays[tray] = view;
                 _stillLocked.Add(tray);
 
-                Debug.Log($"[LockObstacle] Tray[{tray.TrayID}] bị khóa — HP={hp} | anchor={anchorTarget.name}");
+                Debug.Log($"[LockObstacle] Tray[{tray.TrayID}] bị khóa — HP={hp} | anchor={anchor.name}");
             }
 
             _pendingData = null;
@@ -156,31 +155,32 @@ namespace FoodMatch.Obstacle
         }
 
         /// <summary>
-        /// Spawn LockView vào neutralContainer (KHÔNG phải child của FoodTray).
-        /// Scale giữ nguyên 100% như prefab gốc — không bị ảnh hưởng bởi FoodTray hierarchy.
-        /// Follow theo anchor (Slot 1-2 của layer0) để bám đúng vị trí khi tray xoay.
+        /// Spawn vào neutralContainer với rotation gốc của prefab.
+        /// LockTrayView chỉ follow position (+ offsetY, offsetZ) — rotation không đổi.
         /// </summary>
         private LockTrayView SpawnLockView(Transform anchor, Transform container)
         {
-            LockTrayView view;
+            // Offset chỉ Y và Z — X = 0 để căn giữa theo anchor
+            Vector3 offset = new Vector3(0f, offsetY, offsetZ);
 
-            Vector3 spawnPos = anchor.position + worldOffset;
+            LockTrayView view;
 
             if (lockViewPrefab != null)
             {
-                view = Object.Instantiate(lockViewPrefab, spawnPos, Quaternion.identity, container);
+                // Spawn tại anchor position + offset, giữ rotation của prefab (Quaternion.identity hoặc rotation prefab)
+                Vector3 spawnPos = anchor.position + offset;
+                view = Object.Instantiate(lockViewPrefab, spawnPos, lockViewPrefab.transform.rotation, container);
             }
             else
             {
                 var go = new GameObject("LockView");
                 go.transform.SetParent(container, false);
-                go.transform.position = spawnPos;
+                go.transform.position = anchor.position + offset;
                 view = go.AddComponent<LockTrayView>();
                 Debug.LogWarning("[LockObstacle] lockViewPrefab chưa gán — dùng fallback.");
             }
 
-            // Follow anchor (Slot 1-2) — bám theo đúng slot khi grid xoay
-            view.Follow(anchor, worldOffset);
+            view.Follow(anchor, offset);
             return view;
         }
 

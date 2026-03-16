@@ -344,7 +344,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   lockViewPrefab: {fileID: 6833735175151441038, guid: 8b2f37ca903be6743af116d55943b89e,
     type: 3}
-  worldOffset: {x: 0, y: 10, z: -20}
+  offsetY: 2
+  offsetZ: -1
 --- !u!4 &41090283
 Transform:
   m_ObjectHideFlags: 0
