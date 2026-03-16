@@ -6,107 +6,87 @@ using FoodMatch.Core;
 namespace FoodMatch.UI
 {
     /// <summary>
-    /// Gắn vào GameObject "SettingsUI" — popup cài đặt trong game.
-    /// Quản lý: Graphics quality, Sound FX slider, Music slider, Vibration toggle,
-    /// Quit (hiện popup cảnh báo), Resume / X (tiếp tục game).
+    /// HIERARCHY BẮT BUỘC:
+    ///
+    ///   [SettingsManager]          ← Empty GameObject, script SettingsUI.cs nằm ĐÂY
+    ///       └─ [SettingsPopup]     ← kéo vào field settingsPopup, SetActive FALSE trong Editor
+    ///            ├─ Background
+    ///            ├─ BtnResume
+    ///            ├─ BtnClose
+    ///            ├─ BtnQuit
+    ///            └─ ...tất cả UI con
+    ///       └─ [QuitWarningPopup]  ← kéo vào field quitWarningPopup, SetActive FALSE trong Editor
+    ///
+    ///   [HUD]
+    ///       └─ [BtnSettings]       ← kéo vào field btnSettings
+    ///                                 XÓA SẠCH Unity Events trên button này trong Inspector
+    ///
+    /// LƯU Ý QUAN TRỌNG:
+    ///   - SettingsPopup và QuitWarningPopup phải SetActive FALSE ngay trong Editor
+    ///   - Script SettingsUI KHÔNG được nằm trên SettingsPopup
+    ///   - BtnSettings KHÔNG được có Unity Event nào — chỉ dùng field btnSettings
     /// </summary>
     public class SettingsUI : MonoBehaviour
     {
-        // ─── Inspector ────────────────────────────────────────────────────────
+        [Header("Popups — phải SetActive FALSE trong Editor")]
+        [SerializeField] private GameObject settingsPopup;
+        [SerializeField] private GameObject quitWarningPopup;
 
-        [Header("─── Panel Root ──────────────────────────")]
-        [SerializeField] private GameObject settingsPanel;
-
-        // CanvasGroup tự động tạo — dùng để tắt blocksRaycasts ngay khi đóng
-        // thay vì đợi tween scale về 0 xong mới SetActive(false)
-        private CanvasGroup _panelCanvasGroup;
-
-        [Header("─── Graphics Buttons ─────────────────────")]
+        [Header("Graphics")]
         [SerializeField] private Button btnLow;
         [SerializeField] private Button btnMedium;
         [SerializeField] private Button btnHigh;
-
-        [Tooltip("Màu nền khi button đang được chọn (vàng)")]
         [SerializeField] private Color graphicsActiveColor = new Color(1f, 0.82f, 0.1f);
-        [Tooltip("Màu nền khi button không được chọn (xám mờ)")]
         [SerializeField] private Color graphicsInactiveColor = new Color(0.45f, 0.45f, 0.45f, 0.7f);
 
-        [Header("─── Sound FX ─────────────────────────────")]
+        [Header("Sound FX")]
         [SerializeField] private Slider soundFxSlider;
         [SerializeField] private Image soundFxIcon;
         [SerializeField] private Sprite soundOnSprite;
         [SerializeField] private Sprite soundOffSprite;
 
-        [Header("─── Music ────────────────────────────────")]
+        [Header("Music")]
         [SerializeField] private Slider musicSlider;
         [SerializeField] private Image musicIcon;
         [SerializeField] private Sprite musicOnSprite;
         [SerializeField] private Sprite musicOffSprite;
 
-        [Header("─── Vibration Custom Toggle ──────────────")]
-        [Tooltip("GameObject cha của toggle (có Button component + Image background)")]
+        [Header("Vibration Toggle")]
         [SerializeField] private Button vibrationToggleBtn;
-
-        [Tooltip("Image của background toggle (cái thanh dài)")]
         [SerializeField] private Image vibrationBgImage;
-
-        [Tooltip("RectTransform của handle (cái nút tròn)")]
         [SerializeField] private RectTransform vibrationHandle;
-
-        [Tooltip("Image của handle (cái nút tròn)")]
         [SerializeField] private Image vibrationHandleImage;
-
-        [Tooltip("Sprite background khi BẬT (màu cam/vàng)")]
         [SerializeField] private Sprite toggleBgOnSprite;
-
-        [Tooltip("Sprite background khi TẮT (màu xám)")]
         [SerializeField] private Sprite toggleBgOffSprite;
-
-        [Tooltip("Sprite handle khi BẬT")]
         [SerializeField] private Sprite toggleHandleOnSprite;
-
-        [Tooltip("Sprite handle khi TẮT")]
         [SerializeField] private Sprite toggleHandleOffSprite;
-
-        [Tooltip("Vị trí anchoredPosition X của handle khi BẬT (bên phải)")]
         [SerializeField] private float handleOnX = 40f;
-
-        [Tooltip("Vị trí anchoredPosition X của handle khi TẮT (bên trái)")]
         [SerializeField] private float handleOffX = -40f;
-
         [SerializeField] private float toggleAnimDuration = 0.2f;
 
-        // Runtime state
-        private bool _vibrationOn = true;
-
-        [Header("─── Buttons ─────────────────────────────")]
+        [Header("Buttons")]
         [SerializeField] private Button btnResume;
-        [SerializeField] private Button btnClose;   // dấu X
+        [SerializeField] private Button btnClose;
         [SerializeField] private Button btnQuit;
-        [SerializeField] private Button btnSettings; // nút mở Settings (ở HUD)
+        [SerializeField] private Button btnSettings; // XÓA Unity Event trên button này
 
-        [Header("─── Quit Warning Popup ──────────────────")]
-        [Tooltip("Popup cảnh báo thoát sẽ mất HP")]
-        [SerializeField] private GameObject quitWarningPopup;
-
-        [Header("─── Animation ────────────────────────────")]
+        [Header("Animation")]
         [SerializeField] private float panelScaleDuration = 0.35f;
         [SerializeField] private Ease panelOpenEase = Ease.OutBack;
         [SerializeField] private Ease panelCloseEase = Ease.InBack;
 
-        // ─── Const Keys (PlayerPrefs) ─────────────────────────────────────────
-        private const string KEY_GRAPHICS = "Settings_Graphics";   // 0=Low,1=Med,2=High
+        // Keys
+        private const string KEY_GRAPHICS = "Settings_Graphics";
         private const string KEY_SOUND = "Settings_SoundFx";
         private const string KEY_MUSIC = "Settings_Music";
         private const string KEY_VIBRATION = "Settings_Vibration";
 
-        // ─── Singleton ────────────────────────────────────────────────────────
         public static SettingsUI Instance { get; private set; }
 
-        // ─── Runtime ──────────────────────────────────────────────────────────
-        private int _currentGraphics = 1; // default Medium
+        private int _currentGraphics = 1;
         private bool _isOpen = false;
-        private GameState _stateBeforeOpen = GameState.None; // state lúc mở settings
+        private bool _vibrationOn = true;
+        private GameState _stateBeforeOpen = GameState.None;
 
         // ─────────────────────────────────────────────────────────────────────
 
@@ -115,51 +95,13 @@ namespace FoodMatch.UI
             if (Instance != null && Instance != this) { Destroy(gameObject); return; }
             Instance = this;
 
-            // Tự động thêm CanvasGroup vào settingsPanel nếu chưa có
-            // CanvasGroup cho phép tắt blocksRaycasts ngay lập tức khi đóng panel
-            // mà không cần đợi tween scale xong mới SetActive(false)
-            if (settingsPanel != null)
-            {
-                _panelCanvasGroup = settingsPanel.GetComponent<CanvasGroup>();
-                if (_panelCanvasGroup == null)
-                    _panelCanvasGroup = settingsPanel.AddComponent<CanvasGroup>();
-            }
+            // Đảm bảo cả 2 popup tắt hoàn toàn khi start
+            // SetActive(false) = không render, không nhận raycast, không block click
+            if (settingsPopup != null) settingsPopup.SetActive(false);
+            if (quitWarningPopup != null) quitWarningPopup.SetActive(false);
 
             LoadSettings();
             BindButtons();
-            settingsPanel?.SetActive(false);
-            quitWarningPopup?.SetActive(false);
-        }
-
-        // ─── Load / Save ──────────────────────────────────────────────────────
-
-        private void LoadSettings()
-        {
-            _currentGraphics = PlayerPrefs.GetInt(KEY_GRAPHICS, 1);
-
-            float soundVal = PlayerPrefs.GetFloat(KEY_SOUND, 0.7f);
-            float musicVal = PlayerPrefs.GetFloat(KEY_MUSIC, 0.5f);
-            bool vibrationOn = PlayerPrefs.GetInt(KEY_VIBRATION, 1) == 1;
-
-            if (soundFxSlider != null) soundFxSlider.value = soundVal;
-            if (musicSlider != null) musicSlider.value = musicVal;
-
-            _vibrationOn = vibrationOn;
-            RefreshVibrationToggle(instant: true); // set ngay không animation
-
-            RefreshGraphicsUI(_currentGraphics);
-            RefreshSoundIcon(soundVal);
-            RefreshMusicIcon(musicVal);
-            ApplyAudioVolumes(soundVal, musicVal);
-        }
-
-        private void SaveSettings()
-        {
-            PlayerPrefs.SetInt(KEY_GRAPHICS, _currentGraphics);
-            PlayerPrefs.SetFloat(KEY_SOUND, soundFxSlider != null ? soundFxSlider.value : 1f);
-            PlayerPrefs.SetFloat(KEY_MUSIC, musicSlider != null ? musicSlider.value : 1f);
-            PlayerPrefs.SetInt(KEY_VIBRATION, _vibrationOn ? 1 : 0);
-            PlayerPrefs.Save();
         }
 
         // ─── Bind ─────────────────────────────────────────────────────────────
@@ -182,20 +124,16 @@ namespace FoodMatch.UI
 
         // ─── Open / Close ─────────────────────────────────────────────────────
 
-        private void OnClickSettings()
+        public void OnClickSettings()
         {
-            if (_isOpen)
-            {
-                CloseSettings();
-            }
-            else
-            {
-                OpenSettings();
-            }
+            Debug.Log($"[SettingsUI] OnClickSettings — _isOpen={_isOpen}");
+            if (_isOpen) CloseSettings();
+            else OpenSettings();
         }
 
         public void OpenSettings()
         {
+            Debug.Log($"[SettingsUI] OpenSettings — _isOpen={_isOpen}");
             if (_isOpen) return;
             _isOpen = true;
 
@@ -205,74 +143,46 @@ namespace FoodMatch.UI
 
             if (_stateBeforeOpen == GameState.Play)
             {
-                GameManager.Instance.ChangeState(GameState.Pause);
+                GameManager.Instance.ForceChangeState(GameState.Pause);
                 Time.timeScale = 0f;
             }
 
-            settingsPanel?.SetActive(true);
-
-            // Bật lại raycast ngay khi mở
-            if (_panelCanvasGroup != null)
-            {
-                _panelCanvasGroup.blocksRaycasts = true;
-                _panelCanvasGroup.interactable = true;
-            }
-
-            if (settingsPanel != null)
-            {
-                settingsPanel.transform.localScale = Vector3.zero;
-                settingsPanel.transform
-                    .DOScale(Vector3.one, panelScaleDuration)
-                    .SetEase(panelOpenEase)
-                    .SetUpdate(true);
-            }
-
-            EventBus.RaiseGamePaused();
+            // SetActive(true) trước, sau đó mới tween
+            settingsPopup.SetActive(true);
+            settingsPopup.transform.DOKill();
+            settingsPopup.transform.localScale = Vector3.zero;
+            settingsPopup.transform
+                .DOScale(Vector3.one, panelScaleDuration)
+                .SetEase(panelOpenEase)
+                .SetUpdate(true);
         }
 
         public void CloseSettings()
         {
+            Debug.Log($"[SettingsUI] CloseSettings — _isOpen={_isOpen}");
             if (!_isOpen) return;
-
             SaveSettings();
             _isOpen = false;
 
-            // Tắt raycast NGAY LẬP TỨC — không đợi tween xong
-            // Đây là fix chính: panel vẫn visible trong lúc scale về 0
-            // nhưng không block click nữa
-            if (_panelCanvasGroup != null)
-            {
-                _panelCanvasGroup.blocksRaycasts = false;
-                _panelCanvasGroup.interactable = false;
-            }
-
-            if (settingsPanel != null)
-            {
-                settingsPanel.transform.DOKill();
-                settingsPanel.transform
-                    .DOScale(Vector3.zero, panelScaleDuration * 0.8f)
-                    .SetEase(panelCloseEase)
-                    .SetUpdate(true)
-                    .OnComplete(() => settingsPanel.SetActive(false));
-            }
+            settingsPopup.transform.DOKill();
+            settingsPopup.transform
+                .DOScale(Vector3.zero, panelScaleDuration * 0.8f)
+                .SetEase(panelCloseEase)
+                .SetUpdate(true)
+                .OnComplete(() => settingsPopup.SetActive(false)); // tắt sau khi tween xong
         }
 
         // ─── Resume ───────────────────────────────────────────────────────────
 
         private void ResumeGame()
         {
+            GameState stateToRestore = _stateBeforeOpen;
             CloseSettings();
 
-            // Trả về đúng state lúc mở settings, không hardcode
-            if (GameManager.Instance != null)
+            if (GameManager.Instance != null && stateToRestore == GameState.Play)
             {
-                // Chỉ restore timeScale và state nếu trước đó đang Play (đã bị pause)
-                if (_stateBeforeOpen == GameState.Play)
-                {
-                    Time.timeScale = 1f;
-                    GameManager.Instance.ChangeState(GameState.Play);
-                }
-                // Các state khác (Menu, Win, Lose…) không cần làm gì thêm
+                Time.timeScale = 1f;
+                GameManager.Instance.ForceChangeState(GameState.Play);
             }
 
             _stateBeforeOpen = GameState.None;
@@ -283,50 +193,54 @@ namespace FoodMatch.UI
 
         private void OnClickQuit()
         {
-            // Ẩn settings panel, hiện popup cảnh báo
-            if (settingsPanel != null) settingsPanel.SetActive(false);
-            if (quitWarningPopup != null)
-            {
-                quitWarningPopup.SetActive(true);
-                quitWarningPopup.transform.localScale = Vector3.zero;
-                quitWarningPopup.transform
-                    .DOScale(Vector3.one, panelScaleDuration)
-                    .SetEase(panelOpenEase)
-                    .SetUpdate(true);
-            }
+            // Ẩn settings, đợi tween xong mới hiện quit warning
+            settingsPopup.transform.DOKill();
+            settingsPopup.transform
+                .DOScale(Vector3.zero, panelScaleDuration * 0.8f)
+                .SetEase(panelCloseEase)
+                .SetUpdate(true)
+                .OnComplete(() =>
+                {
+                    settingsPopup.SetActive(false);
+                    quitWarningPopup.SetActive(true);
+                    quitWarningPopup.transform.DOKill();
+                    quitWarningPopup.transform.localScale = Vector3.zero;
+                    quitWarningPopup.transform
+                        .DOScale(Vector3.one, panelScaleDuration)
+                        .SetEase(panelOpenEase)
+                        .SetUpdate(true);
+                });
         }
 
-        /// <summary>
-        /// Gọi từ QuitWarningPopup → nút "Xác nhận thoát".
-        /// Sẽ mất HP, sau đó về Menu.
-        /// </summary>
         public void ConfirmQuit()
         {
-            quitWarningPopup?.SetActive(false);
+            quitWarningPopup.SetActive(false);
             _isOpen = false;
             _stateBeforeOpen = GameState.None;
             Time.timeScale = 1f;
 
-            EventBus.RaiseHPChanged(0, 0); // placeholder — thay bằng logic thực tế
+            EventBus.RaiseHPChanged(0, 0);
             GameManager.Instance?.ChangeState(GameState.Menu);
         }
 
-        /// <summary>
-        /// Gọi từ QuitWarningPopup → nút "Hủy".
-        /// Quay lại settings.
-        /// </summary>
         public void CancelQuit()
         {
-            quitWarningPopup?.SetActive(false);
-            if (settingsPanel != null)
-            {
-                settingsPanel.SetActive(true);
-                settingsPanel.transform.localScale = Vector3.zero;
-                settingsPanel.transform
-                    .DOScale(Vector3.one, panelScaleDuration)
-                    .SetEase(panelOpenEase)
-                    .SetUpdate(true);
-            }
+            quitWarningPopup.transform.DOKill();
+            quitWarningPopup.transform
+                .DOScale(Vector3.zero, panelScaleDuration * 0.8f)
+                .SetEase(panelCloseEase)
+                .SetUpdate(true)
+                .OnComplete(() =>
+                {
+                    quitWarningPopup.SetActive(false);
+                    settingsPopup.SetActive(true);
+                    settingsPopup.transform.DOKill();
+                    settingsPopup.transform.localScale = Vector3.zero;
+                    settingsPopup.transform
+                        .DOScale(Vector3.one, panelScaleDuration)
+                        .SetEase(panelOpenEase)
+                        .SetUpdate(true);
+                });
         }
 
         // ─── Graphics ─────────────────────────────────────────────────────────
@@ -335,11 +249,10 @@ namespace FoodMatch.UI
         {
             _currentGraphics = level;
             RefreshGraphicsUI(level);
-            ApplyGraphicsQuality(level);
+            QualitySettings.SetQualityLevel(level, true);
             SaveSettings();
         }
 
-        /// <summary>Button được chọn sáng vàng; còn lại xám mờ.</summary>
         private void RefreshGraphicsUI(int activeLevel)
         {
             SetButtonColor(btnLow, activeLevel == 0);
@@ -351,73 +264,53 @@ namespace FoodMatch.UI
         {
             if (btn == null) return;
             var img = btn.GetComponent<Image>();
-            if (img == null) return;
-            img.color = isActive ? graphicsActiveColor : graphicsInactiveColor;
-
-            // Text cũng làm tối nếu inactive
+            if (img != null) img.color = isActive ? graphicsActiveColor : graphicsInactiveColor;
             var txt = btn.GetComponentInChildren<Text>();
             if (txt != null) txt.color = isActive ? Color.white : new Color(0.8f, 0.8f, 0.8f, 0.6f);
-
-            var tmpTxt = btn.GetComponentInChildren<TMPro.TMP_Text>();
-            if (tmpTxt != null) tmpTxt.color = isActive ? Color.white : new Color(0.8f, 0.8f, 0.8f, 0.6f);
+            var tmp = btn.GetComponentInChildren<TMPro.TMP_Text>();
+            if (tmp != null) tmp.color = isActive ? Color.white : new Color(0.8f, 0.8f, 0.8f, 0.6f);
         }
 
-        private void ApplyGraphicsQuality(int level)
-        {
-            // Unity Quality Settings: index 0=Low, 1=Medium, 2=High (tuỳ setup project)
-            QualitySettings.SetQualityLevel(level, true);
-        }
-
-        // ─── Sound FX ─────────────────────────────────────────────────────────
+        // ─── Sound / Music ────────────────────────────────────────────────────
 
         private void OnSoundFxChanged(float value)
         {
-            RefreshSoundIcon(value);
+            if (soundFxIcon != null)
+                soundFxIcon.sprite = value <= 0f ? soundOffSprite : soundOnSprite;
             ApplyAudioVolumes(value, musicSlider != null ? musicSlider.value : 1f);
+            SaveSettings();
+        }
+
+        private void OnMusicChanged(float value)
+        {
+            if (musicIcon != null)
+                musicIcon.sprite = value <= 0f ? musicOffSprite : musicOnSprite;
+            ApplyAudioVolumes(soundFxSlider != null ? soundFxSlider.value : 1f, value);
             SaveSettings();
         }
 
         private void RefreshSoundIcon(float value)
         {
-            if (soundFxIcon == null) return;
-            soundFxIcon.sprite = value <= 0f ? soundOffSprite : soundOnSprite;
-        }
-
-        // ─── Music ────────────────────────────────────────────────────────────
-
-        private void OnMusicChanged(float value)
-        {
-            RefreshMusicIcon(value);
-            ApplyAudioVolumes(soundFxSlider != null ? soundFxSlider.value : 1f, value);
-            SaveSettings();
+            if (soundFxIcon != null)
+                soundFxIcon.sprite = value <= 0f ? soundOffSprite : soundOnSprite;
         }
 
         private void RefreshMusicIcon(float value)
         {
-            if (musicIcon == null) return;
-            musicIcon.sprite = value <= 0f ? musicOffSprite : musicOnSprite;
+            if (musicIcon != null)
+                musicIcon.sprite = value <= 0f ? musicOffSprite : musicOnSprite;
         }
 
-        // ─── Apply Audio ──────────────────────────────────────────────────────
-
-        /// <summary>
-        /// Áp dụng volume vào AudioMixer hoặc AudioListener.
-        /// Nếu bạn dùng AudioMixer, thay thế phần này cho phù hợp.
-        /// </summary>
-        private void ApplyAudioVolumes(float sfxVolume, float musicVolume)
+        private void ApplyAudioVolumes(float sfx, float music)
         {
-            // Ví dụ dùng AudioMixer (uncomment nếu có):
-            // audioMixer.SetFloat("SFX_Volume", Mathf.Log10(Mathf.Max(sfxVolume, 0.0001f)) * 20f);
-            // audioMixer.SetFloat("Music_Volume", Mathf.Log10(Mathf.Max(musicVolume, 0.0001f)) * 20f);
-
-            // Placeholder: gọi SoundManager/AudioManager nếu có
-            // SoundManager.Instance?.SetSFXVolume(sfxVolume);
-            // SoundManager.Instance?.SetMusicVolume(musicVolume);
-
-            AudioListener.volume = sfxVolume; // fallback đơn giản
+            // audioMixer.SetFloat("SFX_Volume",   Mathf.Log10(Mathf.Max(sfx,   0.0001f)) * 20f);
+            // audioMixer.SetFloat("Music_Volume", Mathf.Log10(Mathf.Max(music, 0.0001f)) * 20f);
+            // SoundManager.Instance?.SetSFXVolume(sfx);
+            // SoundManager.Instance?.SetMusicVolume(music);
+            AudioListener.volume = sfx;
         }
 
-        // ─── Vibration Custom Toggle ──────────────────────────────────────────
+        // ─── Vibration ────────────────────────────────────────────────────────
 
         private void OnVibrationClicked()
         {
@@ -426,63 +319,65 @@ namespace FoodMatch.UI
             SaveSettings();
         }
 
-        /// <summary>
-        /// Cập nhật visual toggle: handle trượt trái/phải, đổi sprite bg và handle.
-        /// </summary>
-        /// <param name="instant">true = set ngay (không animation), dùng khi load lần đầu</param>
         private void RefreshVibrationToggle(bool instant)
         {
             float targetX = _vibrationOn ? handleOnX : handleOffX;
 
-            // Đổi sprite background
-            if (vibrationBgImage != null)
-                vibrationBgImage.sprite = _vibrationOn ? toggleBgOnSprite : toggleBgOffSprite;
-
-            // Đổi sprite handle
-            if (vibrationHandleImage != null)
-                vibrationHandleImage.sprite = _vibrationOn ? toggleHandleOnSprite : toggleHandleOffSprite;
-
+            if (vibrationBgImage != null) vibrationBgImage.sprite = _vibrationOn ? toggleBgOnSprite : toggleBgOffSprite;
+            if (vibrationHandleImage != null) vibrationHandleImage.sprite = _vibrationOn ? toggleHandleOnSprite : toggleHandleOffSprite;
             if (vibrationHandle == null) return;
 
-            // Guard: handle phải là GameObject CON, không phải toggle cha
             if (vibrationToggleBtn != null &&
                 vibrationHandle.gameObject == vibrationToggleBtn.gameObject)
             {
-                Debug.LogWarning("[SettingsUI] vibrationHandle đang trỏ vào Toggle cha! " +
-                                 "Hãy kéo Handle (GameObject con nút tròn) vào field này.");
+                Debug.LogWarning("[SettingsUI] vibrationHandle trỏ vào Toggle cha!");
                 return;
             }
 
-            // Kill tween cũ trước khi tạo tween mới
             vibrationHandle.DOKill();
-
             if (instant)
-            {
-                // Chỉ đổi X, giữ nguyên Y để handle không nhảy
-                vibrationHandle.anchoredPosition =
-                    new Vector2(targetX, vibrationHandle.anchoredPosition.y);
-            }
+                vibrationHandle.anchoredPosition = new Vector2(targetX, vibrationHandle.anchoredPosition.y);
             else
-            {
-                vibrationHandle
-                    .DOAnchorPosX(targetX, toggleAnimDuration)
-                    .SetEase(Ease.OutCubic)
-                    .SetUpdate(true);
-            }
+                vibrationHandle.DOAnchorPosX(targetX, toggleAnimDuration).SetEase(Ease.OutCubic).SetUpdate(true);
         }
 
-        /// <summary>Truy vấn trạng thái vibration từ bên ngoài.</summary>
-        public static bool IsVibrationEnabled()
+        // ─── Load / Save ──────────────────────────────────────────────────────
+
+        private void LoadSettings()
         {
-            return PlayerPrefs.GetInt(KEY_VIBRATION, 1) == 1;
+            _currentGraphics = PlayerPrefs.GetInt(KEY_GRAPHICS, 1);
+            float soundVal = PlayerPrefs.GetFloat(KEY_SOUND, 0.7f);
+            float musicVal = PlayerPrefs.GetFloat(KEY_MUSIC, 0.5f);
+            _vibrationOn = PlayerPrefs.GetInt(KEY_VIBRATION, 1) == 1;
+
+            if (soundFxSlider != null) soundFxSlider.value = soundVal;
+            if (musicSlider != null) musicSlider.value = musicVal;
+
+            RefreshVibrationToggle(instant: true);
+            RefreshGraphicsUI(_currentGraphics);
+            RefreshSoundIcon(soundVal);
+            RefreshMusicIcon(musicVal);
+            ApplyAudioVolumes(soundVal, musicVal);
         }
+
+        private void SaveSettings()
+        {
+            PlayerPrefs.SetInt(KEY_GRAPHICS, _currentGraphics);
+            PlayerPrefs.SetFloat(KEY_SOUND, soundFxSlider != null ? soundFxSlider.value : 1f);
+            PlayerPrefs.SetFloat(KEY_MUSIC, musicSlider != null ? musicSlider.value : 1f);
+            PlayerPrefs.SetInt(KEY_VIBRATION, _vibrationOn ? 1 : 0);
+            PlayerPrefs.Save();
+        }
+
+        public static bool IsVibrationEnabled() =>
+            PlayerPrefs.GetInt(KEY_VIBRATION, 1) == 1;
 
         // ─── Cleanup ──────────────────────────────────────────────────────────
 
         private void OnDestroy()
         {
-            DOTween.Kill(settingsPanel?.transform);
-            DOTween.Kill(quitWarningPopup?.transform);
+            if (settingsPopup != null) settingsPopup.transform.DOKill();
+            if (quitWarningPopup != null) quitWarningPopup.transform.DOKill();
         }
     }
 }
