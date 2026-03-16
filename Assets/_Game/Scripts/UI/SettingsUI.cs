@@ -17,6 +17,10 @@ namespace FoodMatch.UI
         [Header("─── Panel Root ──────────────────────────")]
         [SerializeField] private GameObject settingsPanel;
 
+        // CanvasGroup tự động tạo — dùng để tắt blocksRaycasts ngay khi đóng
+        // thay vì đợi tween scale về 0 xong mới SetActive(false)
+        private CanvasGroup _panelCanvasGroup;
+
         [Header("─── Graphics Buttons ─────────────────────")]
         [SerializeField] private Button btnLow;
         [SerializeField] private Button btnMedium;
@@ -96,14 +100,31 @@ namespace FoodMatch.UI
         private const string KEY_MUSIC = "Settings_Music";
         private const string KEY_VIBRATION = "Settings_Vibration";
 
+        // ─── Singleton ────────────────────────────────────────────────────────
+        public static SettingsUI Instance { get; private set; }
+
         // ─── Runtime ──────────────────────────────────────────────────────────
         private int _currentGraphics = 1; // default Medium
         private bool _isOpen = false;
+        private GameState _stateBeforeOpen = GameState.None; // state lúc mở settings
 
         // ─────────────────────────────────────────────────────────────────────
 
         private void Awake()
         {
+            if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+            Instance = this;
+
+            // Tự động thêm CanvasGroup vào settingsPanel nếu chưa có
+            // CanvasGroup cho phép tắt blocksRaycasts ngay lập tức khi đóng panel
+            // mà không cần đợi tween scale xong mới SetActive(false)
+            if (settingsPanel != null)
+            {
+                _panelCanvasGroup = settingsPanel.GetComponent<CanvasGroup>();
+                if (_panelCanvasGroup == null)
+                    _panelCanvasGroup = settingsPanel.AddComponent<CanvasGroup>();
+            }
+
             LoadSettings();
             BindButtons();
             settingsPanel?.SetActive(false);
@@ -178,14 +199,25 @@ namespace FoodMatch.UI
             if (_isOpen) return;
             _isOpen = true;
 
-            // Pause game nếu đang ở GameState.Play
-            if (GameManager.Instance != null && GameManager.Instance.CurrentState == GameState.Play)
+            _stateBeforeOpen = GameManager.Instance != null
+                ? GameManager.Instance.CurrentState
+                : GameState.None;
+
+            if (_stateBeforeOpen == GameState.Play)
             {
                 GameManager.Instance.ChangeState(GameState.Pause);
                 Time.timeScale = 0f;
             }
 
             settingsPanel?.SetActive(true);
+
+            // Bật lại raycast ngay khi mở
+            if (_panelCanvasGroup != null)
+            {
+                _panelCanvasGroup.blocksRaycasts = true;
+                _panelCanvasGroup.interactable = true;
+            }
+
             if (settingsPanel != null)
             {
                 settingsPanel.transform.localScale = Vector3.zero;
@@ -203,17 +235,26 @@ namespace FoodMatch.UI
             if (!_isOpen) return;
 
             SaveSettings();
+            _isOpen = false;
+
+            // Tắt raycast NGAY LẬP TỨC — không đợi tween xong
+            // Đây là fix chính: panel vẫn visible trong lúc scale về 0
+            // nhưng không block click nữa
+            if (_panelCanvasGroup != null)
+            {
+                _panelCanvasGroup.blocksRaycasts = false;
+                _panelCanvasGroup.interactable = false;
+            }
 
             if (settingsPanel != null)
             {
+                settingsPanel.transform.DOKill();
                 settingsPanel.transform
                     .DOScale(Vector3.zero, panelScaleDuration * 0.8f)
                     .SetEase(panelCloseEase)
                     .SetUpdate(true)
                     .OnComplete(() => settingsPanel.SetActive(false));
             }
-
-            _isOpen = false;
         }
 
         // ─── Resume ───────────────────────────────────────────────────────────
@@ -222,14 +263,19 @@ namespace FoodMatch.UI
         {
             CloseSettings();
 
-            // Chỉ resume về Play nếu trước đó đang Play/Pause
-            if (GameManager.Instance != null &&
-                GameManager.Instance.CurrentState == GameState.Pause)
+            // Trả về đúng state lúc mở settings, không hardcode
+            if (GameManager.Instance != null)
             {
-                Time.timeScale = 1f;
-                GameManager.Instance.ChangeState(GameState.Play);
+                // Chỉ restore timeScale và state nếu trước đó đang Play (đã bị pause)
+                if (_stateBeforeOpen == GameState.Play)
+                {
+                    Time.timeScale = 1f;
+                    GameManager.Instance.ChangeState(GameState.Play);
+                }
+                // Các state khác (Menu, Win, Lose…) không cần làm gì thêm
             }
 
+            _stateBeforeOpen = GameState.None;
             EventBus.RaiseGameResumed();
         }
 
@@ -258,12 +304,10 @@ namespace FoodMatch.UI
         {
             quitWarningPopup?.SetActive(false);
             _isOpen = false;
+            _stateBeforeOpen = GameState.None;
             Time.timeScale = 1f;
 
-            // Trừ HP ở đây (nếu có HPManager) hoặc raise event
-            // HPManager.Instance?.TakeDamage(1);
             EventBus.RaiseHPChanged(0, 0); // placeholder — thay bằng logic thực tế
-
             GameManager.Instance?.ChangeState(GameState.Menu);
         }
 
@@ -400,11 +444,23 @@ namespace FoodMatch.UI
 
             if (vibrationHandle == null) return;
 
+            // Guard: handle phải là GameObject CON, không phải toggle cha
+            if (vibrationToggleBtn != null &&
+                vibrationHandle.gameObject == vibrationToggleBtn.gameObject)
+            {
+                Debug.LogWarning("[SettingsUI] vibrationHandle đang trỏ vào Toggle cha! " +
+                                 "Hãy kéo Handle (GameObject con nút tròn) vào field này.");
+                return;
+            }
+
+            // Kill tween cũ trước khi tạo tween mới
+            vibrationHandle.DOKill();
+
             if (instant)
             {
-                var pos = vibrationHandle.anchoredPosition;
-                pos.x = targetX;
-                vibrationHandle.anchoredPosition = pos;
+                // Chỉ đổi X, giữ nguyên Y để handle không nhảy
+                vibrationHandle.anchoredPosition =
+                    new Vector2(targetX, vibrationHandle.anchoredPosition.y);
             }
             else
             {
