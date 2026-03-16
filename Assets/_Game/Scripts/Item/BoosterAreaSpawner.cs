@@ -37,7 +37,7 @@ namespace FoodMatch.Items
         [Header("─── Spawn Mode ──────────────────────")]
         [Tooltip("True = chỉ spawn booster đã unlock. False = spawn tất cả (locked hiện overlay).")]
         [SerializeField] private bool spawnUnlockedOnly = false;
-
+        private bool _hasSpawnedThisLevel = false;
         [Header("─── Animation ────────────────────────")]
         [SerializeField] private float staggerDelay = 0.06f;
         [SerializeField] private float scaleInDuration = 0.25f;
@@ -64,10 +64,35 @@ namespace FoodMatch.Items
 
         private void HandleGameStateChanged(GameState state)
         {
-            if (state == GameState.Play)
-                SpawnAll();
-            else if (state == GameState.Win || state == GameState.Lose)
-                ClearAll();
+            switch (state)
+            {
+                case GameState.LoadLevel:
+                    // Level mới hoàn toàn → reset flag + clear UI cũ
+                    _hasSpawnedThisLevel = false;
+                    ClearAll();
+                    break;
+
+                case GameState.Play:
+                    // Chỉ spawn nếu chưa spawn trong level này
+                    // Revive: Play lại nhưng _hasSpawnedThisLevel vẫn true → skip
+                    if (!_hasSpawnedThisLevel)
+                    {
+                        SpawnAll();
+                        _hasSpawnedThisLevel = true;
+                    }
+                    break;
+
+                case GameState.Win:
+                    // Win → level kết thúc, dọn dẹp + reset flag
+                    ClearAll();
+                    _hasSpawnedThisLevel = false;
+                    break;
+
+                case GameState.Lose:
+                    // KHÔNG reset flag, KHÔNG ClearAll
+                    // Booster vẫn hiển thị, Revive sẽ Play tiếp mà không spawn lại
+                    break;
+            }
         }
 
         // ── Spawn ─────────────────────────────────────────────────────────────
