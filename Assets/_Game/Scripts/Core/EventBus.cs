@@ -49,6 +49,14 @@ namespace FoodMatch.Core
 
         /// <summary>Người chơi nhấn dùng nhưng quantity = 0 → gợi ý mua thêm.</summary>
         public static event Action<string> OnBoosterOutOfStock;
+
+        /// <summary>
+        /// Người chơi mua thành công booster từ BoosterPurchasePopup.
+        /// BoosterSlotView lắng nghe để refresh quantity + animation.
+        /// Param: boosterName.
+        /// </summary>
+        public static event Action<string> OnBoosterPurchased;
+
         // ─── HP Events ────────────────────────────────────────────────────────
         /// <summary>HP thay đổi. Params: (current, max).</summary>
         public static event Action<int, int> OnHPChanged;
@@ -65,6 +73,7 @@ namespace FoodMatch.Core
 
         /// <summary>Không đủ coin. Param: số coin còn thiếu.</summary>
         public static event Action<long> OnInsufficientCoins;
+
         // ─── Conveyor Obstacle Events ─────────────────────────────────────────
         /// <summary>
         /// Raised khi player tap collect food từ băng chuyền.
@@ -93,6 +102,7 @@ namespace FoodMatch.Core
         public static void RaiseBoosterActivated(string name) => OnBoosterActivated?.Invoke(name);
         public static void RaiseBoosterUnlocked(string name) => OnBoosterUnlocked?.Invoke(name);
         public static void RaiseBoosterOutOfStock(string name) => OnBoosterOutOfStock?.Invoke(name);
+        public static void RaiseBoosterPurchased(string name) => OnBoosterPurchased?.Invoke(name);
         public static void RaiseConveyorFoodCollected(int foodID) => OnConveyorFoodCollected?.Invoke(foodID);
         public static void RaiseHPChanged(int current, int max) => OnHPChanged?.Invoke(current, max);
         public static void RaiseHPEmpty() => OnHPEmpty?.Invoke();
@@ -122,6 +132,7 @@ namespace FoodMatch.Core
             OnBoosterActivated = null;
             OnBoosterUnlocked = null;
             OnBoosterOutOfStock = null;
+            OnBoosterPurchased = null;
             OnConveyorFoodCollected = null;
             OnHPChanged = null;
             OnHPEmpty = null;

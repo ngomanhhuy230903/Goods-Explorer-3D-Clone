@@ -66,6 +66,11 @@ namespace FoodMatch.UI
         [Tooltip("Hủy — đóng popup, gọi callback để SettingsUI mở lại settings")]
         [SerializeField] private Button quitCancelBtn;
 
+        // ── BOOSTER PURCHASE ──────────────────────────────────────────────────
+        [Header("─── Booster Purchase Popup ───────────")]
+        [Tooltip("Kéo GameObject BoosterPurchasePopup vào đây để reparent vào PopupCanvas.")]
+        [SerializeField] private GameObject boosterPurchasePopupRoot;
+
         // ── Loading overlay ───────────────────────────────────────────────────
         [Header("─── Loading Panel ───────────────────")]
         [SerializeField] private CanvasGroup loadingPanel;
@@ -138,11 +143,17 @@ namespace FoodMatch.UI
             ReparentToPopupCanvas(losePopup2);
             ReparentToPopupCanvas(losePopup3);
             ReparentToPopupCanvas(quitWarningPopup);
+            ReparentToPopupCanvas(boosterPurchasePopupRoot);
 
             Debug.Log("[GameResultUI] PopupCanvas đã được tạo.");
         }
 
-        private void ReparentToPopupCanvas(GameObject target)
+        /// <summary>
+        /// Reparent 1 GameObject vào PopupCanvas.
+        /// Public để BoosterPurchasePopup gọi từ Start() nếu cần reparent muộn.
+        /// Giữ nguyên toàn bộ layout (anchor, size, scale).
+        /// </summary>
+        public void ReparentToPopupCanvas(GameObject target)
         {
             if (target == null || _popupCanvas == null) return;
             var rt = target.GetComponent<RectTransform>();
@@ -165,6 +176,44 @@ namespace FoodMatch.UI
             rt.anchoredPosition = anchoredPos;
             rt.sizeDelta = sizeDelta;
             rt.localScale = localScale;
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // OVERLAY — PUBLIC API (dùng chung cho BoosterPurchasePopup)
+        // ═══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// Fade overlay vào rồi gọi callback — dùng cho mọi popup cần nền mờ.
+        /// </summary>
+        public void ShowOverlayThen(System.Action onShown)
+        {
+            if (overlayDim != null)
+            {
+                overlayDim.gameObject.SetActive(true);
+                var c = overlayDim.color; c.a = 0f; overlayDim.color = c;
+                overlayDim.DOFade(overlayTargetAlpha, overlayFadeDuration)
+                    .SetUpdate(true)
+                    .OnComplete(() => onShown?.Invoke());
+            }
+            else
+            {
+                onShown?.Invoke();
+            }
+        }
+
+        /// <summary>
+        /// Fade overlay ra và ẩn — gọi khi đóng popup không phải Win/Lose.
+        /// Chỉ ẩn overlay nếu hiện không có Win/Lose popup nào đang mở.
+        /// </summary>
+        public void HideOverlay()
+        {
+            if (_isShowing) return;   // Win/Lose đang dùng overlay → không tắt
+            if (overlayDim == null) return;
+
+            overlayDim.DOKill();
+            overlayDim.DOFade(0f, overlayFadeDuration)
+                .SetUpdate(true)
+                .OnComplete(() => overlayDim.gameObject.SetActive(false));
         }
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -218,12 +267,6 @@ namespace FoodMatch.UI
         // QUIT WARNING — PUBLIC API
         // ═══════════════════════════════════════════════════════════════════════
 
-        /// <summary>
-        /// Gọi từ SettingsUI khi player bấm Quit.
-        /// Hiện overlay + QuitWarningPopup (trong PopupCanvas sortingOrder 999)
-        /// → tự nhiên render trên 3D objects, không cần ẩn gì thêm.
-        /// </summary>
-        /// <param name="onCancelled">Callback khi player bấm X/Hủy — SettingsUI mở lại settings.</param>
         public void ShowQuitWarning(System.Action onCancelled)
         {
             _onQuitCancelled = onCancelled;
@@ -241,8 +284,6 @@ namespace FoodMatch.UI
                 AnimatePopupIn(quitWarningPopup);
             }
         }
-
-        // ── Xác nhận thoát — giống hệt OnClickCloseToHome ────────────────────
 
         private void OnClickQuitConfirm()
         {
@@ -266,13 +307,10 @@ namespace FoodMatch.UI
             }
         }
 
-        // ── Hủy thoát — trả callback về SettingsUI ───────────────────────────
-
         private void OnClickQuitCancel()
         {
             AnimatePopupOut(quitWarningPopup, () =>
             {
-                // Fade out overlay
                 if (overlayDim != null)
                 {
                     overlayDim.DOFade(0f, overlayFadeDuration)
@@ -280,7 +318,6 @@ namespace FoodMatch.UI
                         .OnComplete(() => overlayDim.gameObject.SetActive(false));
                 }
 
-                // Báo lại SettingsUI để mở lại settings popup
                 _onQuitCancelled?.Invoke();
                 _onQuitCancelled = null;
             });

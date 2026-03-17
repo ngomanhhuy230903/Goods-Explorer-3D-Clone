@@ -4,17 +4,21 @@ using UnityEngine.UI;
 using DG.Tweening;
 using FoodMatch.Core;
 using FoodMatch.Data;
+using FoodMatch.UI;
 
 namespace FoodMatch.Items
 {
     /// <summary>
     /// Gán vào prefab BoosterSlot.
     /// Hiển thị icon, tên, quantity, lock state.
-    /// Click → UseBooster nếu còn số lượng VÀ không có booster nào đang chạy.
     ///
-    /// v2: Bỏ RefreshQuantity() trong OnClick() — thay bằng lắng nghe
-    ///     EventBus.OnBoosterActivated (fire sau khi booster THỰC SỰ hoàn thành).
-    ///     Button bị disable ngay khi click, chỉ được enable lại khi event về.
+    /// Logic click:
+    ///   - Booster bị lock → không làm gì (button disabled).
+    ///   - Booster đã unlock, qty > 0 → UseBooster bình thường.
+    ///   - Booster đã unlock, qty == 0 → mở BoosterPurchasePopup.
+    ///
+    /// v3: Thêm trigger BoosterPurchasePopup khi qty == 0.
+    ///     Lắng nghe EventBus.OnBoosterPurchased để refresh sau khi mua.
     /// </summary>
     public class BoosterSlotView : MonoBehaviour
     {
@@ -28,6 +32,14 @@ namespace FoodMatch.Items
         [SerializeField] private GameObject selectBorder;
         [SerializeField] private Button button;
 
+        /// <summary>
+        /// (Optional) Badge hiện dấu "+" hoặc icon giỏ hàng khi qty == 0 và có thể mua.
+        /// Nếu không dùng thì để trống.
+        /// </summary>
+        [Header("─── Buy Hint (optional) ─────────────")]
+        [Tooltip("GameObject hiện dấu '+' hoặc icon mua khi qty = 0. Để trống nếu không dùng.")]
+        [SerializeField] private GameObject buyHintBadge;
+
         private BoosterData _data;
 
         // ── Unity lifecycle ───────────────────────────────────────────────────
@@ -35,27 +47,41 @@ namespace FoodMatch.Items
         private void OnEnable()
         {
             EventBus.OnBoosterActivated += HandleBoosterActivated;
+            EventBus.OnBoosterPurchased += HandleBoosterPurchased;
         }
 
         private void OnDisable()
         {
             EventBus.OnBoosterActivated -= HandleBoosterActivated;
+            EventBus.OnBoosterPurchased -= HandleBoosterPurchased;
         }
 
-        // ── Event handler ─────────────────────────────────────────────────────
+        // ── Event handlers ────────────────────────────────────────────────────
 
         /// <summary>
-        /// Fire từ BoosterManager.NotifyBoosterCompleted() — tức là SAU KHI
-        /// booster đã thực hiện xong hiệu ứng, không phải lúc bắt đầu.
-        /// Chỉ refresh slot của booster vừa hoàn thành.
+        /// Fire từ BoosterManager sau khi booster hoàn thành hiệu ứng.
+        /// Refresh lại slot tương ứng.
         /// </summary>
         private void HandleBoosterActivated(string boosterName)
         {
-            if (_data == null) return;
-            if (boosterName != _data.boosterName) return;
-
-            // Booster đã xong → refresh UI chính xác
+            if (_data == null || boosterName != _data.boosterName) return;
             RefreshQuantity();
+        }
+
+        /// <summary>
+        /// Fire từ BoosterPurchasePopup sau khi mua thành công.
+        /// Refresh lại slot vừa được thêm hàng.
+        /// </summary>
+        private void HandleBoosterPurchased(string boosterName)
+        {
+            if (_data == null || boosterName != _data.boosterName) return;
+            RefreshQuantity();
+
+            // Animation nhỏ báo hiệu slot vừa được nạp hàng
+            transform.DOKill();
+            transform
+                .DOScale(Vector3.one * 1.15f, 0.18f).SetEase(Ease.OutBack)
+                .OnComplete(() => transform.DOScale(Vector3.one, 0.12f));
         }
 
         // ── Bind ──────────────────────────────────────────────────────────────
@@ -88,11 +114,19 @@ namespace FoodMatch.Items
 
             if (selectBorder != null) selectBorder.SetActive(false);
 
+            // Hiện buy hint badge nếu hết hàng nhưng có thể mua
+            if (buyHintBadge != null)
+                buyHintBadge.SetActive(unlocked && qty == 0 && data.IsPurchasable);
+
             if (button != null)
             {
                 button.onClick.RemoveAllListeners();
                 button.onClick.AddListener(OnClick);
-                button.interactable = unlocked && qty > 0;
+
+                // Khi qty = 0 nhưng đã unlock và có thể mua → vẫn interactable
+                // để dẫn vào popup mua hàng
+                bool canTap = unlocked && (qty > 0 || data.IsPurchasable);
+                button.interactable = canTap;
             }
         }
 
@@ -138,25 +172,32 @@ namespace FoodMatch.Items
             if (_data == null) return;
             int qty = BoosterInventory.GetQuantity(_data);
             bool hasStock = qty > 0;
+            bool unlocked = _data.IsUnlocked(FoodMatch.Managers.SaveManager.CurrentLevel);
 
-            if (quantityBadge != null) quantityBadge.SetActive(true);
+            if (quantityBadge != null) quantityBadge.SetActive(unlocked);
             if (quantityText != null) quantityText.text = qty.ToString();
 
-            // Re-enable button nếu còn hàng, disable nếu hết
-            if (button != null) button.interactable = hasStock;
+            // Buy hint badge
+            if (buyHintBadge != null)
+                buyHintBadge.SetActive(unlocked && !hasStock && _data.IsPurchasable);
+
+            // Icon dim khi hết hàng
             if (iconImage != null)
-                iconImage.color = hasStock ? Color.white : new Color(0.5f, 0.5f, 0.5f);
+                iconImage.color = (unlocked && hasStock) ? Color.white : new Color(0.4f, 0.4f, 0.4f);
+
+            // Button: vẫn bật nếu có thể mua qua popup
+            if (button != null)
+            {
+                bool canTap = unlocked && (hasStock || _data.IsPurchasable);
+                button.interactable = canTap;
+            }
         }
 
         // ── Click handler ─────────────────────────────────────────────────────
 
         private void OnClick()
         {
-            if (_data == null || BoosterManager.Instance == null) return;
-
-            // Disable button NGAY để chặn double-tap trong khi BoosterManager
-            // chưa kịp set _isBusy (tránh race condition 1 frame)
-            if (button != null) button.interactable = false;
+            if (_data == null) return;
 
             // Animation nhấn
             transform.DOKill();
@@ -165,19 +206,38 @@ namespace FoodMatch.Items
                 .OnComplete(() =>
                     transform.DOScale(Vector3.one, 0.15f).SetEase(Ease.OutBack));
 
-            // UseBooster có _isBusy guard bên trong.
-            // Nếu bị reject (busy / hết hàng), cần re-enable button lại.
+            int qty = BoosterInventory.GetQuantity(_data);
+
+            // ── Trường hợp hết hàng → mở popup mua ──────────────────────────
+            if (qty == 0)
+            {
+                if (_data.IsPurchasable)
+                {
+                    if (BoosterPurchasePopup.Instance != null)
+                        BoosterPurchasePopup.Instance.Show(_data);
+                    else
+                        Debug.LogWarning("[BoosterSlotView] BoosterPurchasePopup.Instance is null. " +
+                                         "Hãy đặt BoosterPurchasePopup vào scene.");
+                }
+                // Nếu không thể mua (coinCost = 0, hết hàng hoàn toàn) → không làm gì
+                return;
+            }
+
+            // ── Trường hợp còn hàng → dùng booster bình thường ───────────────
+            if (BoosterManager.Instance == null) return;
+
+            // Disable button NGAY để chặn double-tap
+            if (button != null) button.interactable = false;
+
             bool wasBusy = BoosterManager.Instance.IsBusy;
             BoosterManager.Instance.UseBooster(_data.boosterName);
 
-            // Nếu UseBooster bị reject (vẫn còn hàng nhưng busy), restore button
+            // Nếu UseBooster bị reject (busy), restore button
             if (wasBusy)
             {
-                int qty = BoosterInventory.GetQuantity(_data);
                 if (button != null) button.interactable = qty > 0;
             }
-            // Nếu UseBooster thành công → button ở trạng thái disabled
-            // và sẽ được re-enable trong HandleBoosterActivated khi booster xong.
+            // Nếu thành công → button disabled, sẽ re-enable khi HandleBoosterActivated về.
         }
     }
 }
