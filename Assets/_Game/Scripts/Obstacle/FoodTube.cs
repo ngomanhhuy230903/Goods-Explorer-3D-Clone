@@ -104,7 +104,9 @@ namespace FoodMatch.Obstacle
             if (_headItem == null) return;
             Log($"TakeHead [{_headData?.name}] — queue còn {_queue.Count}");
 
-            DestroyHead();
+            // Không gọi DestroyHead() nữa để giữ lại GameObject cho Controller quản lý bay vào khay
+            _headItem = null;
+            _headData = null;
 
             if (_queue.Count > 0)
                 SpawnNextHead();
@@ -113,6 +115,7 @@ namespace FoodMatch.Obstacle
                 Log("Hết food trong ống!");
                 OnTubeEmpty?.Invoke(this);
             }
+
             UpdateCountText();
         }
 
@@ -122,6 +125,7 @@ namespace FoodMatch.Obstacle
             DestroyHead();
             _queue.Clear();
             _isTaking = false;
+
             UpdateCountText();
             Log("Cleared.");
         }

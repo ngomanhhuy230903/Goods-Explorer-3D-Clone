@@ -122,6 +122,7 @@ namespace FoodMatch.Food
 
             BuildAndExecuteDeliveryCommand(poppedItem, onComplete, keepScale);
         }
+
         /// <summary>
         /// Gọi bởi FoodTube.OnPointerClick() khi player tap vào ống.
         /// Flow giống BackupTray food — match order hoặc vào backup.
@@ -150,18 +151,37 @@ namespace FoodMatch.Food
 
             if (matchResult.IsMatch)
             {
+                // Tách food ra khỏi ống ngay lập tức để ống spawn cái tiếp theo
+                sourceTube.TakeHead();
+
                 var cmd = new OrderDeliveryCommand(foodItem, matchResult.Tray, matchResult.SlotIndex);
                 ExecuteOrderCommand(cmd, () =>
                 {
-                    sourceTube.TakeHead();
                     onComplete?.Invoke();
                 });
             }
             else
             {
-                // Tube không hỗ trợ backup — chỉ bounce tại chỗ
-                foodItem.PlayLockedBounce();
-                onComplete?.Invoke();
+                int backupSlot = _backupTray.TryReserveNextSlot(instanceId);
+
+                if (backupSlot < 0)
+                {
+                    Debug.Log("[FoodFlowController] BackupTray đầy → THUA!");
+                    EventBus.RaiseBackupFull();
+
+                    foodItem.PlayLockedBounce();
+                    onComplete?.Invoke();
+                    return;
+                }
+
+                // Tách food ra khỏi ống ngay lập tức để chuyển quyền cho Backup Tray
+                sourceTube.TakeHead();
+
+                var cmd = new BackupDeliveryCommand(foodItem, backupSlot);
+                ExecuteBackupCommand(cmd, () =>
+                {
+                    onComplete?.Invoke();
+                });
             }
         }
         #endregion
@@ -196,6 +216,7 @@ namespace FoodMatch.Food
                 ExecuteBackupCommand(cmd, onComplete, keepScale);  // ← truyền keepScale
             }
         }
+
         private void ExecuteOrderCommand(OrderDeliveryCommand cmd, Action onComplete)
         {
             cmd.Execute(null);
@@ -255,9 +276,8 @@ namespace FoodMatch.Food
             var food = cmd.Food;
             int slotIndex = cmd.SlotIndex;
 
-            Vector3 prefabScale = food.Data.prefab.transform.localScale;
-            // Nếu keepScale → giữ nguyên scale hiện tại, không nhân multiplier
-            Vector3 targetScale = keepScale ? food.transform.localScale : prefabScale * backupSlotScaleMultiplier;
+            // GIỮ NGUYÊN SCALE HIỆN TẠI CỦA FOOD, KHÔNG THU NHỎ/PHÓNG TO NỮA
+            Vector3 targetScale = food.transform.localScale;
             Vector3 targetPos = _backupTray.GetSlotWorldPosition(slotIndex);
 
             var backupConfig = new FlyConfig
@@ -266,7 +286,7 @@ namespace FoodMatch.Food
                 jumpCount = 1,
                 duration = backupJumpDuration,
                 easeMove = DG.Tweening.Ease.OutQuad,
-                easeScale = DG.Tweening.Ease.InOutSine
+                easeScale = DG.Tweening.Ease.InOutSine // Animation scale sẽ không có tác dụng vì targetScale = currentScale
             };
 
             _backupFlyStrategy.Execute(food, targetPos, targetScale, backupConfig, () =>
