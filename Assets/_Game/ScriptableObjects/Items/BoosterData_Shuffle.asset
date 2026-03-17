@@ -16,7 +16,7 @@ MonoBehaviour:
   requiredLevel: 7
   icon: {fileID: 21300000, guid: 4e1e4e7bc1e404ba49f38d90db688820, type: 3}
   displayName: Shuffle
-  description: Shuffle
+  description: Shuffle position all food in food tray
   initialQuantity: 1
   maxQuantity: 999
   rewardQuantity: 1

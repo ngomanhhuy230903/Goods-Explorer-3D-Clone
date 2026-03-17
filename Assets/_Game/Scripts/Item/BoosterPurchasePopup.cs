@@ -11,26 +11,6 @@ namespace FoodMatch.UI
     /// <summary>
     /// Popup mua booster khi qty == 0.
     /// Gắn lên BoosterArea (cùng GameObject với BoosterAreaSpawner).
-    ///
-    /// Popup được reparent vào PopupCanvas của GameResultUI (sortingOrder 999)
-    /// → luôn render trên tất cả 3D objects, dùng chung overlayDim.
-    ///
-    /// Hierarchy mẫu (trước khi reparent — thiết kế trong MainCanvas):
-    ///   GamePanel
-    ///     ├── BoosterArea              ← script này gắn ở đây
-    ///     └── BoosterPurchasePopup     ← GameObject UI, SetActive(false) lúc đầu
-    ///           ├── PopupPanel         ← RectTransform animate scale
-    ///           │     ├── BoosterIcon
-    ///           │     ├── BoosterNameText
-    ///           │     ├── BoosterDescText
-    ///           │     ├── CostText
-    ///           │     ├── BuyButton
-    ///           │     ├── WatchAdsButton
-    ///           │     └── CloseButton
-    ///
-    /// Backdrop/overlay dùng chung overlayDim của GameResultUI.
-    /// popupRoot = GameObject BoosterPurchasePopup (kéo vào Inspector).
-    /// popupPanel = RectTransform panel con bên trong (để animate scale).
     /// </summary>
     public class BoosterPurchasePopup : MonoBehaviour
     {

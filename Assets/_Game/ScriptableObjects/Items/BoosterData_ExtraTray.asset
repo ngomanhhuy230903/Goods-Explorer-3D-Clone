@@ -16,7 +16,7 @@ MonoBehaviour:
   requiredLevel: 3
   icon: {fileID: 21300000, guid: 0882cf9c9c13842c9a3aa4fb74800f83, type: 3}
   displayName: ExtraTray
-  description: ExtraTray
+  description: Add more one backup tray
   initialQuantity: 1
   maxQuantity: 999
   rewardQuantity: 1

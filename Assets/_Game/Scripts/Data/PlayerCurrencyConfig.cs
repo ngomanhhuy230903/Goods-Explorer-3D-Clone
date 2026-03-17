@@ -47,6 +47,6 @@ namespace FoodMatch.Data
 
         [Tooltip("Chi phí coin để hồi sinh khi thua (Revive). 0 = vô hiệu tính năng.")]
         [Min(0)]
-        public int reviveCost = 30;
+        public int reviveCost = 100;
     }
 }

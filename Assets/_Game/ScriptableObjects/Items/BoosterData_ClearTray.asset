@@ -16,7 +16,7 @@ MonoBehaviour:
   requiredLevel: 9
   icon: {fileID: 21300000, guid: 12aeed38be02a418590ffc45a09f0bdd, type: 3}
   displayName: ClearTray
-  description: ClearTray
+  description: Clear all food of backup tray
   initialQuantity: 1
   maxQuantity: 999
   rewardQuantity: 1
