@@ -138,7 +138,9 @@ namespace FoodMatch.UI
             _stateBeforeOpen = GameManager.Instance != null
                 ? GameManager.Instance.CurrentState
                 : GameState.None;
-
+            bool isInsideGame = (_stateBeforeOpen == GameState.Play || _stateBeforeOpen == GameState.Pause);
+            if (btnResume != null) btnResume.gameObject.SetActive(isInsideGame);
+            if (btnQuit != null) btnQuit.gameObject.SetActive(isInsideGame);
             if (_stateBeforeOpen == GameState.Play)
             {
                 GameManager.Instance.ForceChangeState(GameState.Pause);

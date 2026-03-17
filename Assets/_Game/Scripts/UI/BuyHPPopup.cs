@@ -62,7 +62,21 @@ namespace FoodMatch.UI
             // Hiện giá ngay khi Start (giá không đổi trong session)
             RefreshCostUI();
         }
+        private void OnEnable()
+        {
+            FoodMatch.Core.EventBus.OnCoinChanged += OnCoinChanged;
+        }
 
+        private void OnDisable()
+        {
+            FoodMatch.Core.EventBus.OnCoinChanged -= OnCoinChanged;
+        }
+
+        private void OnCoinChanged(long _)
+        {
+            if (popupRoot == null || !popupRoot.activeSelf) return;
+            RefreshCostColor();
+        }
         private void OnDestroy()
         {
             if (Instance == this) Instance = null;
@@ -125,9 +139,26 @@ namespace FoodMatch.UI
             if (coinCostText != null)
                 coinCostText.text = cost > 0 ? $"{cost}" : "Free";
 
-            // Disable mua coin nếu reviveCost == 0 (feature bị tắt)
             if (buyCoinButton != null && cost == 0)
                 buyCoinButton.interactable = false;
+
+            RefreshCostColor(); // ← thêm dòng này
+        }
+
+        /// <summary>
+        /// Đổi màu coinCostText theo khả năng chi trả hiện tại.
+        /// Trắng = đủ coin, đỏ nhạt = thiếu coin.
+        /// </summary>
+        private void RefreshCostColor()
+        {
+            if (coinCostText == null || currencyConfig == null) return;
+
+            bool canAfford = CoinManager.Instance != null
+                && CoinManager.Instance.CurrentCoins >= currencyConfig.reviveCost;
+
+            coinCostText.color = canAfford
+                ? Color.white
+                : new Color(1f, 0.35f, 0.35f);
         }
 
         // ── Timer ─────────────────────────────────────────────────────────────
@@ -158,7 +189,6 @@ namespace FoodMatch.UI
             int cost = currencyConfig.reviveCost;
             if (cost <= 0)
             {
-                // reviveCost == 0 → grant free
                 GrantHP();
                 return;
             }
@@ -169,17 +199,41 @@ namespace FoodMatch.UI
                 return;
             }
 
+            if (CoinManager.Instance.CurrentCoins < cost)
+            {
+                // Đổi màu đỏ báo thiếu coin
+                if (coinCostText != null)
+                    coinCostText.color = new Color(1f, 0.35f, 0.35f);
+
+                // Rung nút rồi mở shop
+                if (buyCoinButton != null)
+                {
+                    buyCoinButton.transform.DOKill();
+                    buyCoinButton.transform
+                        .DOShakePosition(0.3f, new Vector3(8f, 0f, 0f), 20)
+                        .SetRelative()
+                        .SetUpdate(true)
+                        .OnComplete(() =>
+                        {
+                            Hide();
+                            ShopManager.Instance?.OpenShop();
+                        });
+                }
+                else
+                {
+                    Hide();
+                    ShopManager.Instance?.OpenShop();
+                }
+
+                Debug.Log("[BuyHPPopup] Không đủ coin — mở shop.");
+                return;
+            }
+
             bool success = CoinManager.Instance.SpendCoins(cost);
             if (success)
             {
                 Debug.Log($"[BuyHPPopup] Mua HP bằng {cost} coin thành công.");
                 GrantHP();
-            }
-            else
-            {
-                // Không đủ coin → rung nút
-                ShakeButton(buyCoinButton);
-                Debug.Log("[BuyHPPopup] Không đủ coin để mua HP.");
             }
         }
 
