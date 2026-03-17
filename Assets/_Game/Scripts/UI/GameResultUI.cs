@@ -91,6 +91,25 @@ namespace FoodMatch.UI
         [SerializeField] private Ease popupScaleEase = Ease.OutBack;
         [SerializeField] private float popupDelay = 0.15f;
 
+        // ── PEEK ──────────────────────────────────────────────────────────────
+        [Header("─── Peek (Giữ để nhìn qua) ───────────")]
+        [Tooltip("Bật/tắt tính năng peek cho Lose Popup 1 & 2.")]
+        [SerializeField] private bool enablePeek = true;
+
+        [Tooltip("Image background/dim nằm trong losePopup1 — vùng giữ để peek.\n"
+                + "Nếu để trống, script sẽ tự tìm Image đầu tiên trong losePopup1.")]
+        [SerializeField] private Image lose1_PeekArea;
+
+        [Tooltip("Image background/dim nằm trong losePopup2 — vùng giữ để peek.\n"
+                + "Nếu để trống, script sẽ tự tìm Image đầu tiên trong losePopup2.")]
+        [SerializeField] private Image lose2_PeekArea;
+
+        [Tooltip("Thời gian fade khi peek (ẩn/hiện).")]
+        [SerializeField] private float peekFadeDuration = 0.12f;
+
+        [Tooltip("Alpha của popup khi đang peek (0 = ẩn hoàn toàn).")]
+        [SerializeField] [Range(0f, 1f)] private float peekHiddenAlpha = 0f;
+
         // ═══════════════════════════════════════════════════════════════════════
         // RUNTIME
         // ═══════════════════════════════════════════════════════════════════════
@@ -99,6 +118,10 @@ namespace FoodMatch.UI
         private bool _doubleResolved;
         private Canvas _popupCanvas;
         private System.Action _onQuitCancelled;
+
+        // CanvasGroup được tạo runtime để fade popup khi peek
+        private CanvasGroup _lose1CanvasGroup;
+        private CanvasGroup _lose2CanvasGroup;
 
         // ═══════════════════════════════════════════════════════════════════════
         // UNITY LIFECYCLE
@@ -112,6 +135,7 @@ namespace FoodMatch.UI
             BuildPopupCanvas();
             HideAll();
             BindButtons();
+            SetupPeek();
         }
 
         private void OnEnable() => GameManager.OnGameStateChanged += HandleStateChanged;
@@ -176,6 +200,67 @@ namespace FoodMatch.UI
             rt.anchoredPosition = anchoredPos;
             rt.sizeDelta = sizeDelta;
             rt.localScale = localScale;
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // PEEK SETUP
+        // ═══════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// Khởi tạo tính năng peek cho Lose Popup 1 & 2.
+        /// Gọi sau khi BuildPopupCanvas() hoàn tất.
+        /// </summary>
+        private void SetupPeek()
+        {
+            if (!enablePeek) return;
+
+            _lose1CanvasGroup = GetOrAddCanvasGroup(losePopup1);
+            _lose2CanvasGroup = GetOrAddCanvasGroup(losePopup2);
+
+            SetupPeekArea(losePopup1, ref lose1_PeekArea, _lose1CanvasGroup);
+            SetupPeekArea(losePopup2, ref lose2_PeekArea, _lose2CanvasGroup);
+        }
+
+        /// <summary>
+        /// Tìm hoặc tạo CanvasGroup trên popup root để fade toàn bộ popup.
+        /// </summary>
+        private static CanvasGroup GetOrAddCanvasGroup(GameObject popup)
+        {
+            if (popup == null) return null;
+            var cg = popup.GetComponent<CanvasGroup>();
+            if (cg == null) cg = popup.AddComponent<CanvasGroup>();
+            return cg;
+        }
+
+        /// <summary>
+        /// Gắn PeekBlocker vào peekArea image.
+        /// Nếu peekArea chưa gán trong Inspector, tự tìm Image đầu tiên trong popup.
+        /// </summary>
+        private void SetupPeekArea(GameObject popup, ref Image peekArea, CanvasGroup targetCG)
+        {
+            if (popup == null || targetCG == null) return;
+
+            // Tự tìm nếu chưa gán
+            if (peekArea == null)
+            {
+                peekArea = popup.GetComponentInChildren<Image>(includeInactive: true);
+                if (peekArea == null)
+                {
+                    Debug.LogWarning($"[GameResultUI] Peek: Không tìm được Image trong {popup.name}. Tính năng peek bị bỏ qua cho popup này.");
+                    return;
+                }
+            }
+
+            // Đảm bảo Image nhận được raycast (để IPointerDownHandler hoạt động)
+            peekArea.raycastTarget = true;
+
+            // Thêm PeekBlocker nếu chưa có
+            var blocker = peekArea.gameObject.GetComponent<PeekBlocker>();
+            if (blocker == null) blocker = peekArea.gameObject.AddComponent<PeekBlocker>();
+
+            blocker.Init(targetCG, peekFadeDuration, peekHiddenAlpha);
+
+            Debug.Log($"[GameResultUI] Peek setup cho {popup.name} → PeekArea: {peekArea.name}");
         }
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -372,6 +457,17 @@ namespace FoodMatch.UI
         {
             if (target == null) { Debug.LogError("[GameResultUI] Popup target null!"); return; }
             target.SetActive(true);
+
+            // Reset CanvasGroup alpha về 1 khi popup được mở lại (đề phòng peek bị dở)
+            var cg = target.GetComponent<CanvasGroup>();
+            if (cg != null)
+            {
+                cg.DOKill();
+                cg.alpha = 1f;
+                cg.interactable = true;
+                cg.blocksRaycasts = true;
+            }
+
             target.transform.localScale = Vector3.zero;
             DOVirtual.DelayedCall(popupDelay, () =>
                 target.transform
