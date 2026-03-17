@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
+using TMPro;
 using FoodMatch.Data;
 using FoodMatch.Food;
 
@@ -18,6 +19,9 @@ namespace FoodMatch.Obstacle
         [Header("─── Animation ───────────────────────────")]
         [SerializeField] private float popDuration = 0.25f;
         [SerializeField] private float popScale = 1.15f;
+
+        [Header("─── UI ──────────────────────────────────")]
+        [SerializeField] private TextMeshProUGUI countText;
 
         [Header("─── Debug ───────────────────────────────")]
         [SerializeField] private bool verboseLog = true;
@@ -68,6 +72,7 @@ namespace FoodMatch.Obstacle
             if (foods == null || foods.Count == 0)
             {
                 Log("Ống rỗng.");
+                UpdateCountText();
                 OnTubeEmpty?.Invoke(this);
                 return;
             }
@@ -76,6 +81,7 @@ namespace FoodMatch.Obstacle
                 if (f != null) _queue.Enqueue(f);
 
             SpawnNextHead();
+            UpdateCountText();
             Log($"Init xong — {foods.Count} food | head=[{_headData?.name}] | queue={_queue.Count}");
         }
 
@@ -107,6 +113,7 @@ namespace FoodMatch.Obstacle
                 Log("Hết food trong ống!");
                 OnTubeEmpty?.Invoke(this);
             }
+            UpdateCountText();
         }
 
         public void ClearTube()
@@ -115,6 +122,7 @@ namespace FoodMatch.Obstacle
             DestroyHead();
             _queue.Clear();
             _isTaking = false;
+            UpdateCountText();
             Log("Cleared.");
         }
 
@@ -196,6 +204,14 @@ namespace FoodMatch.Obstacle
                 yield return null;
             }
             if (t != null) t.localScale = finalScale;
+        }
+
+        private void UpdateCountText()
+        {
+            if (countText != null)
+            {
+                countText.text = RemainingCount > 0 ? RemainingCount.ToString() : "";
+            }
         }
 
         private void Log(string msg)
