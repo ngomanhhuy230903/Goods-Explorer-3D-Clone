@@ -22,6 +22,6 @@ MonoBehaviour:
       type: {class: TubeObstacleData, ns: FoodMatch.Data, asm: Assembly-CSharp}
       data:
         isEnabled: 1
-        tubeCount: 2
-        defaultFoodPerTube: 4
+        tubeCount: 4
+        defaultFoodPerTube: 3
         perTubeFoodCount: 

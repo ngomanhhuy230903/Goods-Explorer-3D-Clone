@@ -69,7 +69,6 @@ namespace FoodMatch.Managers
             if (amount <= 0) return true;
             if (CurrentCoins < amount)
             {
-                OnInsufficientCoins?.Invoke(amount - CurrentCoins);
                 Debug.Log($"[CoinManager] Không đủ coin. Cần {amount}, có {CurrentCoins}.");
                 return false;
             }

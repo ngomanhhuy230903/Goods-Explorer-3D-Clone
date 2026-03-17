@@ -110,9 +110,6 @@ public class ShopManager : MonoBehaviour
 
     public void OpenShop()
     {
-        // Reset _isOpen để cho phép mở lại ngay sau khi popup khác đóng
-        _isOpen = false;
-
         if (_isOpen) return;
         _isOpen = true;
 
@@ -122,7 +119,7 @@ public class ShopManager : MonoBehaviour
         panelShopRoot.SetActive(true);
 
         _shopCanvasGroup.DOKill();
-        _shopCanvasGroup.alpha = 0f;
+        _shopCanvasGroup.alpha = 0f;          // bắt đầu từ 0
         _shopCanvasGroup.interactable = false;
         _shopCanvasGroup.blocksRaycasts = false;
 
@@ -130,15 +127,19 @@ public class ShopManager : MonoBehaviour
         {
             panelShopPanel.DOKill();
             panelShopPanel.localScale = Vector3.one * 0.9f;
-            panelShopPanel.DOScale(Vector3.one, scaleDuration).SetEase(scaleEaseIn);
+            panelShopPanel.DOScale(Vector3.one, scaleDuration).SetEase(scaleEaseIn).SetUpdate(true);
         }
 
-        _shopCanvasGroup.DOFade(1f, fadeDuration).OnComplete(() =>
-        {
+        // Fade alpha lên 1 rồi mới bật interactable
+        _shopCanvasGroup.DOFade(1f, fadeDuration)
+            .SetUpdate(true)
+            .OnComplete(() =>
+            {
+                _shopCanvasGroup.alpha = 1f;           // ← đảm bảo đúng 1
             _shopCanvasGroup.interactable = true;
-            _shopCanvasGroup.blocksRaycasts = true;
-            Debug.Log("[ShopManager] OpenShop() hoàn tất.");
-        });
+                _shopCanvasGroup.blocksRaycasts = true;
+                Debug.Log("[ShopManager] OpenShop() hoàn tất — alpha=1, interactable=true.");
+            });
     }
 
     private void HandleOpenViaEvent() => OpenShop();
@@ -152,13 +153,20 @@ public class ShopManager : MonoBehaviour
 
         if (_shopCanvasGroup == null) return;
 
+        // Chặn input NGAY LẬP TỨC — không đợi tween xong
         _shopCanvasGroup.interactable = false;
         _shopCanvasGroup.blocksRaycasts = false;
         _shopCanvasGroup.DOKill();
-        _shopCanvasGroup.DOFade(0f, fadeDuration).OnComplete(() =>
-        {
-            if (panelShopRoot != null) panelShopRoot.SetActive(false);
-        });
+
+        _shopCanvasGroup.DOFade(0f, fadeDuration)
+            .SetUpdate(true)
+            .OnComplete(() =>
+            {
+                _shopCanvasGroup.alpha = 0f;           // ← đảm bảo đúng 0
+            if (panelShopRoot != null)
+                    panelShopRoot.SetActive(false);
+                Debug.Log("[ShopManager] CloseShop() hoàn tất — đã SetActive(false).");
+            });
     }
 
     // Button Close trong panelShop gán vào đây
