@@ -4,10 +4,6 @@ using FoodMatch.Data;
 
 namespace FoodMatch.Core
 {
-    /// <summary>
-    /// Event Bus trung tâm - Observer Pattern.
-    /// Tất cả script đều giao tiếp qua đây thay vì gọi nhau trực tiếp.
-    /// </summary>
     public static class EventBus
     {
         // ─── Food Events ──────────────────────────────────────────────────────
@@ -20,12 +16,6 @@ namespace FoodMatch.Core
         public static event Action<int> OnOrderCompleted;
         public static event Action<int> OnOrderLeft;
         public static event Action OnAllOrdersCompleted;
-
-        /// <summary>
-        /// Raised khi 1 OrderTray mới trở thành Active (sau enter animation).
-        /// FoodFlowController lắng nghe để tự động scan BackupTray tìm match.
-        /// Param: foodID của order mới đó.
-        /// </summary>
         public static event Action<int> OnNewOrderActive;
 
         // ─── Tray Events ──────────────────────────────────────────────────────
@@ -41,46 +31,29 @@ namespace FoodMatch.Core
         public static event Action OnGameResumed;
 
         // ─── Booster Events ───────────────────────────────────────────────────
-        /// <summary>Booster đã được Execute thành công (trừ quantity).</summary>
         public static event Action<string> OnBoosterActivated;
-
-        /// <summary>Booster vừa được mở khóa lần đầu khi lên level.</summary>
         public static event Action<string> OnBoosterUnlocked;
-
-        /// <summary>Người chơi nhấn dùng nhưng quantity = 0 → gợi ý mua thêm.</summary>
         public static event Action<string> OnBoosterOutOfStock;
-
-        /// <summary>
-        /// Người chơi mua thành công booster từ BoosterPurchasePopup.
-        /// BoosterSlotView lắng nghe để refresh quantity + animation.
-        /// Param: boosterName.
-        /// </summary>
         public static event Action<string> OnBoosterPurchased;
 
         // ─── HP Events ────────────────────────────────────────────────────────
-        /// <summary>HP thay đổi. Params: (current, max).</summary>
         public static event Action<int, int> OnHPChanged;
-
-        /// <summary>HP về 0, không thể chơi tiếp.</summary>
         public static event Action OnHPEmpty;
-
-        /// <summary>HP đã hồi đầy.</summary>
         public static event Action OnHPFull;
 
         // ─── Coin Events ──────────────────────────────────────────────────────
-        /// <summary>Số coin thay đổi. Param: giá trị mới.</summary>
         public static event Action<long> OnCoinChanged;
-
-        /// <summary>Không đủ coin. Param: số coin còn thiếu.</summary>
         public static event Action<long> OnInsufficientCoins;
 
-        // ─── Conveyor Obstacle Events ─────────────────────────────────────────
-        /// <summary>
-        /// Raised khi player tap collect food từ băng chuyền.
-        /// Param: foodID của food vừa được collect.
-        /// GameController/FoodFlowController lắng nghe để xử lý tương tự food trên grid.
-        /// </summary>
+        // ─── Conveyor Events ──────────────────────────────────────────────────
         public static event Action<int> OnConveyorFoodCollected;
+
+        // ─── Shop Events ──────────────────────────────────────────────────────
+        /// <summary>Yêu cầu mở Shop từ bất kỳ nơi nào không có reference tới ShopManager.</summary>
+        public static event Action OnOpenShop;
+
+        /// <summary>Yêu cầu đóng Shop.</summary>
+        public static event Action OnCloseShop;
 
         // ─── Raise Helpers ────────────────────────────────────────────────────
         public static void RaiseFoodSelected(FoodItemData food) => OnFoodSelected?.Invoke(food);
@@ -109,6 +82,8 @@ namespace FoodMatch.Core
         public static void RaiseHPFull() => OnHPFull?.Invoke();
         public static void RaiseCoinChanged(long amount) => OnCoinChanged?.Invoke(amount);
         public static void RaiseInsufficientCoins(long shortfall) => OnInsufficientCoins?.Invoke(shortfall);
+        public static void RaiseOpenShop() => OnOpenShop?.Invoke();
+        public static void RaiseCloseShop() => OnCloseShop?.Invoke();
 
         // ─── Cleanup ──────────────────────────────────────────────────────────
         public static void ClearAllEvents()
@@ -139,6 +114,8 @@ namespace FoodMatch.Core
             OnHPFull = null;
             OnCoinChanged = null;
             OnInsufficientCoins = null;
+            OnOpenShop = null;
+            OnCloseShop = null;
             Debug.Log("[EventBus] Tất cả events đã được dọn sạch.");
         }
     }

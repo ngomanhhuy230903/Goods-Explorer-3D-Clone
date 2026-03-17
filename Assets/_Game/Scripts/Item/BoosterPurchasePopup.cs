@@ -56,7 +56,17 @@ namespace FoodMatch.UI
 
             if (popupRoot != null) popupRoot.SetActive(false);
         }
+        private void OnEnable()
+        {
+            Core.EventBus.OnCoinChanged += OnCoinChanged;
+        }
 
+        private void OnDisable()
+        {
+            Core.EventBus.OnCoinChanged -= OnCoinChanged;
+        }
+
+        private void OnCoinChanged(long _) => RefreshBuyButtonState();
         private void Start()
         {
             // Reparent popupRoot vào PopupCanvas của GameResultUI
@@ -173,7 +183,6 @@ namespace FoodMatch.UI
         {
             if (_currentData == null) return;
 
-            // Booster miễn phí → grant luôn, không trừ coin
             if (!_currentData.IsPurchasable)
             {
                 BoosterInventory.Add(_currentData, _currentData.coinPurchaseAmount);
@@ -188,6 +197,36 @@ namespace FoodMatch.UI
                 return;
             }
 
+            // Kiểm tra coin TRƯỚC — không để SpendCoins raise event rồi UIManager mở shop
+            long coins = CoinManager.Instance.CurrentCoins;
+            if (coins < _currentData.coinCost)
+            {
+                // Rung nút
+                if (buyButton != null)
+                {
+                    buyButton.transform.DOKill();
+                    buyButton.transform
+                             .DOShakePosition(0.3f, new Vector3(8f, 0f, 0f), 20)
+                             .SetRelative()
+                             .SetUpdate(true)
+                             .OnComplete(() =>
+                             {
+                         // Đóng popup booster rồi mở shop
+                         Hide();
+                                 ShopManager.Instance?.OpenShop();
+                             });
+                }
+                else
+                {
+                    Hide();
+                    ShopManager.Instance?.OpenShop();
+                }
+
+                Debug.Log($"[BoosterPurchasePopup] Không đủ coin — mở shop.");
+                return;
+            }
+
+            // Đủ coin → mua bình thường, KHÔNG raise OnInsufficientCoins
             bool success = CoinManager.Instance.SpendCoins(_currentData.coinCost);
             if (success)
             {
@@ -195,19 +234,6 @@ namespace FoodMatch.UI
                 Debug.Log($"[BoosterPurchasePopup] Mua '{_currentData.boosterName}' " +
                           $"x{_currentData.coinPurchaseAmount} giá {_currentData.coinCost} coin.");
                 OnGrantSuccess();
-            }
-            else
-            {
-                // Không đủ coin → rung nút
-                if (buyButton != null)
-                {
-                    buyButton.transform.DOKill();
-                    buyButton.transform
-                             .DOShakePosition(0.3f, new Vector3(8f, 0f, 0f), 20)
-                             .SetRelative()
-                             .SetUpdate(true);
-                }
-                Debug.Log($"[BoosterPurchasePopup] Không đủ coin để mua '{_currentData.boosterName}'.");
             }
         }
 
@@ -259,8 +285,18 @@ namespace FoodMatch.UI
         {
             if (buyButton == null || _currentData == null) return;
             if (!_currentData.IsPurchasable) { buyButton.interactable = true; return; }
+
             long coins = CoinManager.Instance != null ? CoinManager.Instance.CurrentCoins : 0;
-            buyButton.interactable = coins >= _currentData.coinCost;
+            bool canAfford = coins >= _currentData.coinCost;
+
+            // Luôn interactable để còn redirect sang shop khi thiếu coin
+            buyButton.interactable = true;
+
+            // Chỉ đổi màu text/icon để báo hiệu thiếu coin
+            if (costText != null)
+                costText.color = canAfford
+                    ? Color.white
+                    : new Color(1f, 0.35f, 0.35f); // đỏ nhạt = thiếu tiền
         }
     }
 }

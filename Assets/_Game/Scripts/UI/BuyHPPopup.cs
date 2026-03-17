@@ -12,12 +12,6 @@ namespace FoodMatch.UI
     /// - Hiển thị giá coin = reviveCost từ PlayerCurrencyConfig.
     /// - Đếm ngược thời gian hồi tim tiếp theo.
     /// - Mua bằng coin / xem ads (placeholder) / đóng popup.
-    ///
-    /// Setup:
-    ///   1. Tạo GameObject BuyHPPopup trong Canvas.
-    ///   2. Gắn script này vào.
-    ///   3. Kéo các field vào Inspector.
-    ///   4. Gọi BuyHPPopup.Instance.Show() từ HPBarUI hoặc UIManager khi HP == 0.
     /// </summary>
     public class BuyHPPopup : MonoBehaviour
     {

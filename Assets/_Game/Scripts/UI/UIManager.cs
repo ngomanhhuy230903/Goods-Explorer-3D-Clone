@@ -3,6 +3,7 @@ using DG.Tweening;
 using System;
 using FoodMatch.Level;
 using FoodMatch.Managers;
+using FoodMatch.Core;
 
 public class UIManager : MonoBehaviour
 {
@@ -29,8 +30,34 @@ public class UIManager : MonoBehaviour
         SetPanel(panelGame, false);
     }
 
-    private void OnEnable() => GameManager.OnGameStateChanged += HandleStateChange;
-    private void OnDisable() => GameManager.OnGameStateChanged -= HandleStateChange;
+    private void OnEnable()
+    {
+        GameManager.OnGameStateChanged += HandleStateChange;
+        EventBus.OnHPEmpty += HandleHPEmpty;
+    }
+
+    private void OnDisable()
+    {
+        GameManager.OnGameStateChanged -= HandleStateChange;
+        EventBus.OnHPEmpty -= HandleHPEmpty;
+    }
+
+    // ─── Shop triggers ────────────────────────────────────────────────────────
+
+    private void HandleInsufficientCoins(long shortfall)
+    {
+        ShopManager.Instance.OpenShop();
+    }
+
+    private void HandleHPEmpty()
+    {
+        // Nếu đang có popupNoHP riêng thì dùng nó, ngược lại mở shop luôn
+        if (popupNoHP != null)
+            ShowNoHPPopup();
+        else
+            ShopManager.Instance.OpenShop();
+    }
+    // ─── State handling ───────────────────────────────────────────────────────
 
     private void HandleStateChange(GameState state)
     {
@@ -57,7 +84,7 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
+    // ─── Panel transitions ────────────────────────────────────────────────────
 
     private void ShowBootSequence(Action onComplete)
     {
@@ -124,12 +151,13 @@ public class UIManager : MonoBehaviour
         cg.blocksRaycasts = active;
     }
 
+    // ─── Button callbacks ─────────────────────────────────────────────────────
+
     public void OnClickPlayButton()
     {
-        // Kiểm tra HP trước khi cho phép vào game
         if (HPManager.Instance != null && !HPManager.Instance.HasHPToPlay())
         {
-            ShowNoHPPopup();
+            HandleHPEmpty();
             return;
         }
 
@@ -138,16 +166,19 @@ public class UIManager : MonoBehaviour
         LevelManager.Instance.RequestLoadLevel(levelToLoad);
     }
 
+    /// <summary>Nút + coin / icon shop trên HUD game gọi thẳng cái này.</summary>
+    public void OnClickOpenShop()
+    {
+        ShopManager.Instance.OpenShop();
+    }
+
     private void ShowNoHPPopup()
     {
-        // Option 1: có popup riêng → bật lên
         if (popupNoHP != null)
         {
             popupNoHP.SetActive(true);
             return;
         }
-
-        // Option 2: chưa có popup → log tạm, thay bằng UI thật sau
         Debug.Log("[UIManager] Hết HP, không thể chơi!");
     }
 }
