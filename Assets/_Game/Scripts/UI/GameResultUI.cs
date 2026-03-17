@@ -138,8 +138,26 @@ namespace FoodMatch.UI
             SetupPeek();
         }
 
-        private void OnEnable() => GameManager.OnGameStateChanged += HandleStateChanged;
-        private void OnDisable() => GameManager.OnGameStateChanged -= HandleStateChanged;
+        private void OnEnable()
+        {
+            GameManager.OnGameStateChanged += HandleStateChanged;
+            FoodMatch.Core.EventBus.OnCoinChanged += OnCoinChanged;
+        }
+
+        private void OnDisable()
+        {
+            GameManager.OnGameStateChanged -= HandleStateChanged;
+            FoodMatch.Core.EventBus.OnCoinChanged -= OnCoinChanged;
+        }
+
+        private void OnCoinChanged(long _)
+        {
+            // Refresh button màu khi coin thay đổi (kể cả khi mua coin từ shop xong)
+            if (losePopup1 != null && losePopup1.activeSelf)
+                RefreshReviveCoinButton(lose1_ReviveCoinBtn, lose1_CoinCostText);
+            if (losePopup2 != null && losePopup2.activeSelf)
+                RefreshReviveCoinButton(lose2_ReviveCoinBtn, lose2_CoinCostText);
+        }
 
         // ═══════════════════════════════════════════════════════════════════════
         // POPUP CANVAS
@@ -531,7 +549,12 @@ namespace FoodMatch.UI
             long cost = CoinManager.Instance.GetReviveCost();
             long coins = CoinManager.Instance.CurrentCoins;
             if (costText) costText.text = cost.ToString();
-            if (btn) btn.interactable = coins >= cost;
+
+            // Luôn interactable — thiếu coin thì đổi màu đỏ, đủ thì trắng
+            if (btn) btn.interactable = true;
+            if (costText) costText.color = coins >= cost
+                ? Color.white
+                : new Color(1f, 0.35f, 0.35f);
         }
 
         private void TransitionLosePopup(int from, int to)
@@ -554,6 +577,17 @@ namespace FoodMatch.UI
         private void OnClickReviveCoin(int popupIndex)
         {
             if (CoinManager.Instance == null) return;
+
+            long cost = CoinManager.Instance.GetReviveCost();
+            long coins = CoinManager.Instance.CurrentCoins;
+
+            if (coins < cost)
+            {
+                // Thiếu coin → mở shop, giữ nguyên lose popup phía sau
+                ShopManager.Instance?.OpenShop();
+                return;
+            }
+
             if (!CoinManager.Instance.TryRevive()) return;
             ConfirmRevive(popupIndex, byAds: false);
         }
