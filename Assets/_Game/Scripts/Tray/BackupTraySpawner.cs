@@ -154,10 +154,10 @@ namespace FoodMatch.Tray
             var newAnchor = SpawnOneSlot(_activeSlotAnchors.Count, newTotal, animate: true);
             _activeSlotAnchors.Add(newAnchor);
 
+            // InjectAnchorsToBackupTray() gọi SetSlotAnchors() — đây là source of truth
+            // cho cả anchors lẫn capacity (_capacity = anchors.Count tự động).
+            // KHÔNG gọi thêm _backupTray.ExpandCapacity(1) để tránh double-count.
             InjectAnchorsToBackupTray();
-
-            // Báo BackupTray mở rộng thêm 1
-            _backupTray.ExpandCapacity(1);
 
             // ── 6. Chờ scale-in xong rồi mới unblock ─────────────────────────
             yield return new WaitForSeconds(newSlotScaleDuration);

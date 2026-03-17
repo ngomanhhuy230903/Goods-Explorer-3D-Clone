@@ -153,7 +153,10 @@ namespace FoodMatch.Tray
 
             _occupants[reservedSlotIndex] = food;
 
-            // Hard snap — anchor có thể đã dịch chuyển trong lúc food bay
+            // ✅ Release reservation vì slot đã confirmed — không còn "pending" nữa
+            SlotReservationRegistry.Instance.ReleaseBackupSlot(reservedSlotIndex);
+
+            // Hard snap
             food.transform.position = _slotAnchors[reservedSlotIndex].position;
 
             Log($"ReceiveFood: {food.Data?.foodName} → slot[{reservedSlotIndex}]");
