@@ -1824,6 +1824,41 @@ MonoBehaviour:
   fadeDuration: 0.15
   peekAlpha: 0
   blockInteractionWhilePeeking: 1
+--- !u!1 &352634228
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 352634229}
+  m_Layer: 5
+  m_Name: BuffetSpace
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &352634229
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 352634228}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 2016429094}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0.0000038146973, y: 0}
+  m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &381985429 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 8618535131875814911, guid: cd8db5f9e064e4668acdf9aee5f73757,
@@ -8656,7 +8691,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 11256fa407cefce43aa565db02bcc7e3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  bufferContainer: {fileID: 2016429094}
+  bufferContainer: {fileID: 352634229}
   spacingX: 5
   bufferFoodScale: 2
   showDebugLog: 1
@@ -8671,7 +8706,8 @@ RectTransform:
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 352634229}
   m_Father: {fileID: 22275868}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 1, y: 0.5}
