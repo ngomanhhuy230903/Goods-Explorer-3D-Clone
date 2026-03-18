@@ -31,6 +31,27 @@ namespace FoodMatch.Food
         [Tooltip("prefabScale × multiplier = scale trong BackupTray slot")]
         [SerializeField] private float backupSlotScaleMultiplier = 0.70f;
 
+        [Header("─── FoodTray World→UI Scale Fix ───────")]
+        [Tooltip(
+            "Food từ FoodTray (3D world-space, xa camera) trông nhỏ hơn food từ Obstacle/Tube " +
+            "(nằm trên UI plane, gần camera) dù cùng localScale.\n\n" +
+            "Multiplier này bù lại khoảng cách camera đó.\n" +
+            "Cách chỉnh: tăng dần từ 1.0 cho đến khi food từ FoodTray trông bằng food từ Tube/Conveyor " +
+            "khi cả hai land vào cùng slot BackupTray.\n\n" +
+            "Giá trị thực đo được trên project này: ~2.3–2.4")]
+        [SerializeField] private float foodTrayWorldToUIScaleCompensation = 2.35f;
+
+        [Tooltip(
+            "Bật để tự tính compensation dựa trên camera distance thay vì dùng giá trị cứng.\n" +
+            "Cần gán 'foodTrayReferenceTransform' và 'uiPlaneReferenceTransform'.")]
+        [SerializeField] private bool autoComputeScaleCompensation = false;
+
+        [Tooltip("(Auto mode) Transform đại diện vị trí của FoodTray trong world space.")]
+        [SerializeField] private Transform foodTrayReferenceTransform;
+
+        [Tooltip("(Auto mode) Transform đại diện mặt phẳng UI (BackupTray / Obstacle plane).")]
+        [SerializeField] private Transform uiPlaneReferenceTransform;
+
         [Header("─── Premium VFX Strategy ──────────────")]
         [Tooltip("Bật để dùng ArcPunchFlyStrategy thay JumpFlyStrategy cho OrderTray")]
         [SerializeField] private bool usePremiumFlyEffect = false;
@@ -41,6 +62,7 @@ namespace FoodMatch.Food
 
         [Header("─── VFX ─────────────────────────────")]
         [SerializeField] private GameObject sparkleVFXPrefab;
+
         [Header("─── Buffer ───────────────────────────")]
         [SerializeField] private FoodBuffer _foodBuffer;
 
@@ -103,9 +125,79 @@ namespace FoodMatch.Food
         #endregion
 
         // ─────────────────────────────────────────────────────────────────────
+        #region Scale Compensation
+
+        /// <summary>
+        /// Tính scale compensation cho food từ FoodTray (world space, xa camera)
+        /// khi nó cần land vào UI plane (gần camera hơn) với visual size nhất quán.
+        ///
+        /// Nguyên nhân lệch scale:
+        ///   - Food trên FoodTray nằm ở z-depth xa camera hơn obstacle/UI plane.
+        ///   - Dù cùng localScale, projected size trên screen sẽ nhỏ hơn theo tỉ lệ
+        ///     distance (perspective camera): size ∝ 1/distance.
+        ///
+        /// Công thức auto: compensation = distFoodTray / distUIPlane
+        /// </summary>
+        private float GetFoodTrayScaleCompensation()
+        {
+            if (!autoComputeScaleCompensation)
+                return foodTrayWorldToUIScaleCompensation;
+
+            if (Camera.main == null) return foodTrayWorldToUIScaleCompensation;
+
+            if (foodTrayReferenceTransform == null || uiPlaneReferenceTransform == null)
+            {
+                Debug.LogWarning("[FoodFlowController] autoComputeScaleCompensation=true nhưng " +
+                                 "chưa gán foodTrayReferenceTransform hoặc uiPlaneReferenceTransform. " +
+                                 "Fallback về giá trị cứng.");
+                return foodTrayWorldToUIScaleCompensation;
+            }
+
+            Vector3 camPos = Camera.main.transform.position;
+            float distFoodTray = Vector3.Distance(camPos, foodTrayReferenceTransform.position);
+            float distUIPlane = Vector3.Distance(camPos, uiPlaneReferenceTransform.position);
+
+            if (distUIPlane < 0.0001f) return foodTrayWorldToUIScaleCompensation;
+
+            return distFoodTray / distUIPlane;
+        }
+
+        /// <summary>
+        /// Áp dụng scale compensation lên food vừa được pop từ FoodTray.
+        /// Gọi NGAY SAU khi TryPopItem(), TRƯỚC khi execute fly command.
+        ///
+        /// Food từ FoodTray (xa camera) → nhân scale lên để khi land vào
+        /// BackupTray/OrderTray trông bằng food từ Tube/Conveyor (gần camera).
+        /// </summary>
+        private void ApplyFoodTrayScaleCompensation(FoodItem food)
+        {
+            if (food == null) return;
+
+            float compensation = GetFoodTrayScaleCompensation();
+
+            // Skip nếu compensation gần 1 để tránh floating point noise
+            if (Mathf.Approximately(compensation, 1f)) return;
+
+            food.transform.localScale *= compensation;
+
+#if UNITY_EDITOR
+            Debug.Log($"[FoodFlowController] ScaleCompensation ×{compensation:F3} " +
+                      $"→ localScale={food.transform.localScale}");
+#endif
+        }
+
+        #endregion
+
+        // ─────────────────────────────────────────────────────────────────────
         #region Public API
 
-        /// <summary>Gọi bởi FoodInteractionHandler khi player tap vào food trên FoodTray.</summary>
+        /// <summary>
+        /// Gọi bởi FoodInteractionHandler khi player tap vào food trên FoodTray.
+        ///
+        /// FIX: Food từ FoodTray nằm xa camera hơn UI plane nên dù cùng localScale,
+        /// nhìn nhỏ hơn khi land vào BackupTray so với food từ Tube/Conveyor.
+        /// → ApplyFoodTrayScaleCompensation() sau khi pop để bù lại.
+        /// </summary>
         public void HandleFoodTapped(FoodItem foodItem, Action onComplete = null, bool keepScale = false)
         {
             if (!_isReady) { onComplete?.Invoke(); return; }
@@ -113,6 +205,8 @@ namespace FoodMatch.Food
 
             if (foodItem.OwnerTray == null)
             {
+                // Không có OwnerTray → food đang ở BackupTray hoặc đã được pop trước đó
+                // → KHÔNG áp dụng compensation (scale đã đúng)
                 BuildAndExecuteDeliveryCommand(foodItem, onComplete, keepScale);
                 return;
             }
@@ -120,14 +214,18 @@ namespace FoodMatch.Food
             FoodItem poppedItem = foodItem.OwnerTray.TryPopItem(foodItem);
             if (poppedItem == null) { onComplete?.Invoke(); return; }
 
+            // ── FIX: Bù scale world-space → UI-space ─────────────────────────
+            // keepScale=true chỉ dùng cho ConveyorTray (đã ở UI plane) → skip.
+            // FoodTray là 3D world object xa camera → cần compensation.
+            if (!keepScale)
+                ApplyFoodTrayScaleCompensation(poppedItem);
+
             BuildAndExecuteDeliveryCommand(poppedItem, onComplete, keepScale);
         }
 
         /// <summary>
         /// Gọi bởi FoodTube.OnPointerClick() khi player tap vào ống.
-        /// Flow giống BackupTray food — match order hoặc vào backup.
-        /// Sau khi delivery hoàn tất (thành công hay thất bại), gọi tube.TakeHead()
-        /// để dequeue item tiếp theo.
+        /// Food từ Tube đã nằm trên UI plane → KHÔNG cần scale compensation.
         /// </summary>
         public void HandleTubeFoodTapped(FoodItem foodItem, FoodTube sourceTube, Action onComplete = null)
         {
@@ -151,7 +249,6 @@ namespace FoodMatch.Food
 
             if (matchResult.IsMatch)
             {
-                // Tách food ra khỏi ống ngay lập tức để ống spawn cái tiếp theo
                 sourceTube.TakeHead();
 
                 var cmd = new OrderDeliveryCommand(foodItem, matchResult.Tray, matchResult.SlotIndex);
@@ -174,7 +271,6 @@ namespace FoodMatch.Food
                     return;
                 }
 
-                // Tách food ra khỏi ống ngay lập tức để chuyển quyền cho Backup Tray
                 sourceTube.TakeHead();
 
                 var cmd = new BackupDeliveryCommand(foodItem, backupSlot);
@@ -184,6 +280,7 @@ namespace FoodMatch.Food
                 });
             }
         }
+
         #endregion
 
         // ─────────────────────────────────────────────────────────────────────
@@ -213,7 +310,7 @@ namespace FoodMatch.Food
                 }
 
                 var cmd = new BackupDeliveryCommand(food, backupSlot);
-                ExecuteBackupCommand(cmd, onComplete, keepScale);  // ← truyền keepScale
+                ExecuteBackupCommand(cmd, onComplete, keepScale);
             }
         }
 
@@ -276,7 +373,10 @@ namespace FoodMatch.Food
             var food = cmd.Food;
             int slotIndex = cmd.SlotIndex;
 
-            // GIỮ NGUYÊN SCALE HIỆN TẠI CỦA FOOD, KHÔNG THU NHỎ/PHÓNG TO NỮA
+            // Scale đã được chuẩn hoá trước khi vào đây:
+            //   - FoodTray food: ApplyFoodTrayScaleCompensation() đã nhân ×compensation
+            //   - Tube/Conveyor food: đã ở UI plane, scale đúng sẵn
+            // → Dùng luôn localScale hiện tại, không nhân thêm.
             Vector3 targetScale = food.transform.localScale;
             Vector3 targetPos = _backupTray.GetSlotWorldPosition(slotIndex);
 
@@ -286,7 +386,7 @@ namespace FoodMatch.Food
                 jumpCount = 1,
                 duration = backupJumpDuration,
                 easeMove = DG.Tweening.Ease.OutQuad,
-                easeScale = DG.Tweening.Ease.InOutSine // Animation scale sẽ không có tác dụng vì targetScale = currentScale
+                easeScale = DG.Tweening.Ease.InOutSine
             };
 
             _backupFlyStrategy.Execute(food, targetPos, targetScale, backupConfig, () =>
@@ -297,6 +397,7 @@ namespace FoodMatch.Food
                 onComplete?.Invoke();
             });
         }
+
         #endregion
 
         // ─────────────────────────────────────────────────────────────────────
@@ -401,6 +502,7 @@ namespace FoodMatch.Food
 
         #endregion
 
+        // ─────────────────────────────────────────────────────────────────────
         #region Buffer → OrderTray Auto-Send
 
         private void HandleBufferFoodReady(int foodID)

@@ -10,18 +10,6 @@ namespace FoodMatch.Food
 {
     /// <summary>
     /// Xử lý tap/click trên FoodItem.
-    ///
-    /// FIX — stale ConveyorFoodOwner sau Reset/GoHome:
-    ///   Khi food trả về pool, FoodItem.OnDespawn() chạy nhưng ConveyorFoodOwner
-    ///   vẫn còn reference cũ → lần play mới food vào case 1 dù không thuộc conveyor
-    ///   → TryPopItem fail → _isProcessing không reset → food bị treo.
-    ///
-    ///   Fix:
-    ///   1. Validate OwnerConveyorTray còn sống (gameObject != null && activeInHierarchy)
-    ///      trước khi dùng — nếu stale → fall-through sang case 2/3.
-    ///   2. Reset _isProcessing trong OnDisable() để pool recycle sạch.
-    ///   3. ConveyorTray.ResetTray() và ConveyorTray.OnDespawn() gọi
-    ///      ClearConveyorOwnerOnAllFood() để null ref trên từng FoodItem.
     /// </summary>
     [RequireComponent(typeof(Collider))]
     public class FoodInteractionHandler : MonoBehaviour,
